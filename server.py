@@ -1,6 +1,6 @@
 import sys
 from mcp.server.fastmcp import FastMCP
-from types import FibInput, TextInput
+from customtypes import FibInput, TextInput
 
 
 mcp = FastMCP("Demo")
