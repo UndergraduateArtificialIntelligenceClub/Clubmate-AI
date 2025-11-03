@@ -1,0 +1,9 @@
+[project]
+name = "clubmate-ai"
+version = "0.1.0"
+description = "Basic MCP tools"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.20.0",
+]

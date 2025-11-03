@@ -1,0 +1,10 @@
+# Python virtual environment
+.venv/
+venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# MCP server logs
+*.log
