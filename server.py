@@ -5,10 +5,8 @@ from dotenv import load_dotenv
 import requests
 
 load_dotenv()
-
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 
-print("Starting MCP server...")
 mcp = FastMCP("mcp-server")
 
 # Common elements from the periodic table
@@ -148,8 +146,6 @@ def get_current_weather(
     if not OPENWEATHER_API_KEY:
         return "No key"
     
-    print("Weather function called")
-    
     location = geocode_city(city_name, country_code)
     if not location:
         return f"Error: Could not find location for '{city_name}'"
@@ -170,7 +166,8 @@ def get_current_weather(
         temp_unit = "C" if units == "metric" else "F" if units == "imperial" else "K"
         speed_unit = "m/s" if units == "metric" else "mph" if units == "imperial" else "m/s"
 
-        weather_info = f"""Current Weather for {location['name']}, {location['country']}:
+        weather_info = f"""
+            Current Weather for {location['name']}, {location['country']}:
             Temperature: {data['main']['temp']}{temp_unit}
             Feels Like: {data['main']['feels_like']}{temp_unit}
             Condition: {data['weather'][0]['description'].title()}
@@ -180,9 +177,6 @@ def get_current_weather(
             Visibility: {data.get('visibility', 'N/A')} meters
             Coordinates: ({location['lat']}, {location['lon']})"""
         
-        print(f"Returning type: {type(weather_info)}")
-        print(f"First 100 chars: {weather_info[:100]}")
-
         return weather_info
 
     except requests.exceptions.RequestException as e:
@@ -202,14 +196,14 @@ def get_5_day_forecast(
         units (str): Units for temperature ('metric', 'imperial', or 'standard')
 
     Returns:
-        str: Formatted string with 5 day weather forecast
+        str: String with 5 day weather forecast
     """
     if not OPENWEATHER_API_KEY:
-        return "no key"
+        return "No key"
 
     location = geocode_city(city_name, country_code)
     if not location:
-        return f"Error: Could not find location for '{city_name}'"
+        return f"Could not find location for '{city_name}'"
 
     url = "https://api.openweathermap.org/data/2.5/forecast"
     params = {
@@ -226,13 +220,14 @@ def get_5_day_forecast(
 
         # Format
         forecast_info = f"5 Day Weather Forecast for {location['name']}, {location['country']}:\n"
+        inf=[]
         for entry in data['list']:
-            dt_txt = entry['dt_txt']
+            date_txt = entry['dt_txt']
             temp = entry['main']['temp']
             description = entry['weather'][0]['description'].title()
-            forecast_info += f"{dt_txt}: {temp}°, {description}\n" 
+            inf.append(f"{date_txt}: {temp} C, {description}\n")
 
-        return forecast_info
+        return f"5 Day Weather Forecast for {location['name']}, {location['country']}:\n" + "".join(inf)
 
     except requests.exceptions.RequestException as e:
         return f"Error fetching weather data: {str(e)}"
