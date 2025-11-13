@@ -53,7 +53,8 @@ def count_characters(text: str) -> str:
 
 @mcp.tool()
 def find_symbol(element: str) -> str:
-    """Find the periodic table symbol for a given element name
+    """
+    Find the periodic table symbol for a given element name
     Args:
         element: The name of the chemical element (e.g., "hydrogen", "carbon")
 
@@ -72,7 +73,8 @@ def find_symbol(element: str) -> str:
 
 @mcp.prompt()
 def greet_user(tone: Literal["friendly", "professional", "casual"] = "friendly") -> str:
-    """Generate a greeting prompt with a specific tone
+    """
+    Generate a greeting prompt with a specific tone
     Args:
         tone: The tone of the greeting (friendly, professional, or casual)
 
@@ -92,6 +94,7 @@ def geocode_city(city_name: str, country_code: Optional[str] = None) -> Optional
     """
     Decode city name to latitude and longitude coordinates using OpenWeather Geocoding API
     Because we need Lat/Lon for weather queries. The API has a built in decoder but is deprecated.
+    So I figured why not just add this as well as a seperate tool.
 
     Returns:
         Dictionary with 'lat', 'lon', 'name', 'country' or None if not found
@@ -114,7 +117,6 @@ def geocode_city(city_name: str, country_code: Optional[str] = None) -> Optional
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
-
         if data and len(data) > 0:
             location = data[0]
             return {
@@ -128,11 +130,7 @@ def geocode_city(city_name: str, country_code: Optional[str] = None) -> Optional
         raise Exception(f"Geocoding API error: {str(e)}")
 
 @mcp.tool()
-def get_current_weather(
-    city_name: str,
-    country_code: Optional[str] = None,
-    units: str = "metric"
-) -> str:
+def get_current_weather(city_name: str, country_code: Optional[str] = None, units: str = "metric") -> str:
     """
     Get current weather data for a specified city
     Args:
@@ -163,19 +161,18 @@ def get_current_weather(
         response.raise_for_status()
         data = response.json()
 
-        temp_unit = "C" if units == "metric" else "F" if units == "imperial" else "K"
-        speed_unit = "m/s" if units == "metric" else "mph" if units == "imperial" else "m/s"
-
+        # Since we're using metric, just use ignore imperial metrics and just use celsius and m/s by default 
         weather_info = f"""
             Current Weather for {location['name']}, {location['country']}:
-            Temperature: {data['main']['temp']}{temp_unit}
-            Feels Like: {data['main']['feels_like']}{temp_unit}
+            Temperature: {data['main']['temp']} C
+            Feels Like: {data['main']['feels_like']} C
             Condition: {data['weather'][0]['description'].title()}
             Humidity: {data['main']['humidity']}%
-            Wind Speed: {data['wind']['speed']} {speed_unit}
+            Wind Speed: {data['wind']['speed']} m/s
             Pressure: {data['main']['pressure']} hPa
             Visibility: {data.get('visibility', 'N/A')} meters
-            Coordinates: ({location['lat']}, {location['lon']})"""
+            Coordinates: ({location['lat']}, {location['lon']})
+            """
         
         return weather_info
 
@@ -183,11 +180,7 @@ def get_current_weather(
         return f"Error fetching weather data: {str(e)}"
     
 @mcp.tool()
-def get_5_day_forecast(
-    city_name: str,
-    country_code: Optional[str] = None,
-    units: str = "metric"
-) -> str:
+def get_5_day_forecast(city_name: str, country_code: Optional[str] = None, units: str = "metric") -> str:
     """
     Get 5 day weather forecast for a specified city
     Args:
@@ -218,22 +211,20 @@ def get_5_day_forecast(
         response.raise_for_status()
         data = response.json()
 
-        # Format
-        forecast_info = f"5 Day Weather Forecast for {location['name']}, {location['country']}:\n"
-        inf=[]
+        info = []
         for entry in data['list']:
             date_txt = entry['dt_txt']
             temp = entry['main']['temp']
             description = entry['weather'][0]['description'].title()
-            inf.append(f"{date_txt}: {temp} C, {description}\n")
+            info.append(f"{date_txt}: {temp} C, {description}\n")
 
-        return f"5 Day Weather Forecast for {location['name']}, {location['country']}:\n" + "".join(inf)
+        return f"5 Day Weather Forecast for {location['name']}, {location['country']}:\n" + "".join(info)
 
     except requests.exceptions.RequestException as e:
         return f"Error fetching weather data: {str(e)}"
 
 def main():
-    mcp.run(transport="stdio")
+    mcp.run()
 
 
 if __name__ == "__main__":
