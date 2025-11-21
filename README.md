@@ -1,2 +1,5 @@
 # Clubmate-AI
-dw abt the api_key in .env, it's invalidatedd
+
+**note about documentation:**
+
+tagging with !!! indicates this line contains an item(s) that need to be replaced with .env loaded environment variables for safety

@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: CMAI_db
+    environment:
+      POSTGRES_USER: soy
+      POSTGRES_PASSWORD: groovy
+      POSTGRES_DB: CMAI
+    ports:
+      - "5432:5432"
+    volumes:
+      - cmai_postgres_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soy -d satd"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cmai_postgres_db:
