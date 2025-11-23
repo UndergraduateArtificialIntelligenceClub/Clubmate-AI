@@ -1,0 +1,16 @@
+{
+  "example": {
+    "name": "example",
+    "script_path": "./example_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "random"
+  },
+  "server1": {
+    "name": "server1",
+    "script_path": "./example_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "First server"
+  }
+}

@@ -1,0 +1,67 @@
+
+╔════════════════════════════════════════════╗
+║   Gemini MCP Client - Test Suite           ║
+║   Running comprehensive tests...           ║
+╚════════════════════════════════════════════╝
+    
+==================================================
+TEST 1: Basic Chat
+==================================================
+✓ Connected to example server
+✗ Error: 'tuple' object has no attribute 'list_tools'
+
+==================================================
+TEST 2: Conversation History
+==================================================
+✗ Error: 'tuple' object has no attribute 'list_tools'
+
+==================================================
+TEST 3: Server Management
+==================================================
+✓ Registered servers: ['example', 'server1', 'server2']
+
+  example:
+    Path: ./example_server.py
+    Language: python
+    Description: 
+
+  server1:
+    Path: ./example_server.py
+    Language: python
+    Description: First server
+
+  server2:
+    Path: ./example_server.py
+    Language: python
+    Description: Second server
+
+✓ Removed server2
+✓ Remaining servers: ['example', 'server1']
+
+==================================================
+TEST 4: Tool Discovery
+==================================================
+✗ Error: 'tuple' object has no attribute 'list_tools'
+
+==================================================
+TEST 5: Error Handling
+==================================================
+Testing invalid server path...
+✓ Correctly raised FileNotFoundError for invalid path
+Testing invalid language...
+✓ Correctly raised ValueError for invalid language
+Testing operations without connection...
+✓ Correctly raised ValueError when not connected
+
+==================================================
+TEST 6: Configuration Persistence
+==================================================
+✓ Saved 2 servers to configuration
+✓ Loaded servers: ['persist1', 'persist2']
+  - persist1: Persistent server 1
+  - persist2: Persistent server 2
+✓ Cleaned up test configuration file
+
+==================================================
+All tests completed!
+==================================================

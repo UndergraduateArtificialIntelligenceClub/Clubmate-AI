@@ -1,0 +1,5 @@
+google-genai>=0.4.0
+mcp>=0.1.0
+fastmcp>=0.1.0
+python-dotenv>=1.0.0
+click>=8.0.0
