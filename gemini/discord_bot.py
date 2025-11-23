@@ -36,33 +36,50 @@ class MCPSessionManager:
         if channel_id not in self.sessions:
             logger.info(f"Creating new session for channel {channel_id}")
             client = GeminiMCPClient()
-
-            # Try to pre-load the example server if it exists in config
-            # This makes the bot usable immediately without setup commands
+            
+            # 1. REGISTER EXAMPLE SERVER (Existing)
             try:
-                # If the server isn't in the config yet, add it programmatically
                 servers = client.list_servers()
-                if DEFAULT_SERVER not in servers:
-                    try:
-                        client.add_server(
-                            name=DEFAULT_SERVER,
-                            script_path="./example_server.py",
-                            language="python",
-                            description="Default Example Server",
-                        )
-                    except Exception:
-                        pass  # Script might not exist, ignore
+                if "example" not in servers:
+                    client.add_server(
+                        name="example",
+                        script_path="./example_server.py",
+                        language="python",
+                        description="Utilities: Dice, Math, Weather"
+                    )
+            except Exception:
+                pass
 
-                # Auto-connect if configured
-                if DEFAULT_SERVER in client.list_servers():
-                    await client.connect(DEFAULT_SERVER)
+            # 2. REGISTER CALENDAR SERVER (New)
+            try:
+                servers = client.list_servers()
+                if "calendar" not in servers:
+                    client.add_server(
+                        name="calendar",
+                        script_path="../src/servers/calendar_integration.py",
+                        language="python",
+                        description="Google Calendar: Schedule, Check Availability"
+                    )
+                    logger.info("Registered Calendar Server")
             except Exception as e:
-                logger.error(f"Auto-connect failed: {e}")
+                logger.error(f"Failed to register calendar: {e}")
 
+            # 3. AUTO CONNECT (Optional - choose which one you want active by default)
+            # Currently, the client only supports one active connection at a time.
+            # Let's default to 'calendar' since that's what you are working on.
+            try:
+                await client.connect("calendar")
+            except Exception as e:
+                logger.error(f"Could not auto-connect to calendar: {e}")
+                # Fallback to example if calendar fails
+                try:
+                    await client.connect("example")
+                except:
+                    pass
+                
             self.sessions[channel_id] = client
-
+            
         return self.sessions[channel_id]
-
     async def close_all(self):
         for client in self.sessions.values():
             await client.close()
