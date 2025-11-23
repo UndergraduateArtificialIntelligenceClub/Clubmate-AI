@@ -4,13 +4,13 @@
     "script_path": "./example_server.py",
     "language": "python",
     "env_vars": null,
-    "description": "random"
+    "description": "Utilities: Dice, Math, Weather"
   },
-  "server1": {
-    "name": "server1",
-    "script_path": "./example_server.py",
+  "calendar": {
+    "name": "calendar",
+    "script_path": "../src/servers/calendar_integration.py",
     "language": "python",
     "env_vars": null,
-    "description": "First server"
+    "description": "Google Calendar: Schedule, Check Availability"
   }
 }
