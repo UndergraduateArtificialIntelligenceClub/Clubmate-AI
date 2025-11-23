@@ -5,9 +5,14 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from typing import Optional, List
 
+from pathlib import Path
 
-import os
+# Get the directory where credentials are stored (right now its in Clu)
+SCRIPT_DIR = Path(__file__).parent.parent  # Points to src/
+CREDENTIALS_PATH = SCRIPT_DIR / "credentials.json"
+TOKEN_PATH = SCRIPT_DIR / "token.json"
 
 mcp = FastMCP("Google Calendar MCP")
 
@@ -19,34 +24,39 @@ SCOPES = [
 
 @mcp.tool()
 def schedule_meeting(
-        id: str,
         start_time: str,
         end_time: str,
-        attendees: list,
-        summary: str
+        summary: str,
+        id: Optional[str] = 'primary',
+        attendees: Optional[List[str]] = None,
+        timezone: Optional[str] = "America/Edmonton",
         ):
     """
     Schedule a meeting on Google Calendar.
     Args:
-        id (str): Calendar ID
-        start_time (str): Start time format
-        end_time (str): End time format
-        attendees (list): List of attendee email addresses
-        summary (str): Summary or title of the meeting
+        start_time (str): Start time
+        end_time (str): End time
+        summary (str): Title/summary of the meeting
+        id (str): Calendar ID (defaults to 'primary')
+        attendees (list): Optional list of attendee email addresses
+        timezone (str): Timezone name (e.g., 'America/Edmonton', 'America/Vancouver'). Defaults to Mountain Time.
     """
+    if attendees is None:
+        attendees = []
+
     service = get_service()
 
     event = {
         'summary': summary,
         'start': {
             'dateTime': start_time,
-            'timeZone': 'Canada/Pacific',
+            'timeZone': timezone,
         },
         'end': {
             'dateTime': end_time,
-            'timeZone': 'Canada/Pacific',
+            'timeZone': timezone,
         },
-        'attendees': [{'email': email} for email in attendees], # List of dicts with 'email' keys
+        'attendees': [{'email': email} for email in attendees],  # List of dicts with 'email' keys
         'reminders': {
             'useDefault': False,
             'overrides': [
@@ -65,28 +75,35 @@ def cancel_meeting():
     pass
 
 @mcp.tool()
-def reschedule_meeting(id: str, event_id: str, new_start_time: str, new_end_time: str):
+def reschedule_meeting(
+        id: str,
+        new_start_time: str,
+        new_end_time: str,
+        event_id: Optional[str] = 'primary',
+        timezone: Optional[str] = "America/Edmonton",
+        ):
     """
     Reschedule a meeting to a new time.
     Args:
         id (str): Calendar ID
-        event_id (str): Event ID of the meeting to be rescheduled
-        new_start_time (str): New start time in RFC3339 format
-        new_end_time (str): New end time in RFC3339 format
+        new_start_time (str): New start time
+        new_end_time (str): New end time
+        event_id (str): Event ID of the meeting to be rescheduled (defaults to 'primary')
+        timezone (str): timezone name (e.g., 'America/Edmonton', 'America/Vancouver'). Defaults to Mountain Time.
     """
     service = get_service()
 
     event = service.events().get(calendarId=id, eventId=event_id).execute()
     event['start'] = {
         'dateTime': new_start_time,
-        'timeZone': 'Canada/Pacific',
+        'timeZone': timezone,
     }
     event['end'] = {
         'dateTime': new_end_time,
-        'timeZone': 'Canada/Pacific',
+        'timeZone': timezone,
     }
 
-    event = service.events().update(calendarId=id, eventId=event_id, body=event).execute()
+    event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
     link = event.get('htmlLink', 'No link available')
     # return JsonResponse
     return {"link": link, "message": f"Meeting rescheduled to {new_start_time} - {new_end_time}"}
@@ -136,8 +153,12 @@ def check_availability(start_time: str, end_time: str):
             result[day_str + "_details"] = "\n".join(busy_times)
 
         current_date += timedelta(days=1)
-    
-    return "\n".join(result)
+
+    # Convert result dict to formatted string
+    output = []
+    for key, value in result.items():
+        output.append(f"{key}: {value}")
+    return "\n".join(output)
 
 @mcp.tool()
 def get_meetings():
@@ -153,9 +174,9 @@ def get_service():
     """
     creds = None
     # The file token.json stores the user's access and refresh tokens
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    
+    if TOKEN_PATH.exists():
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+
     # If there are no (valid) credentials available, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
@@ -163,10 +184,10 @@ def get_service():
         else:
             # This opens your browser to ask for permission
             flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
+                str(CREDENTIALS_PATH), SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open('token.json', 'w') as token:
+        with open(TOKEN_PATH, 'w') as token:
             token.write(creds.to_json())
 
     return build('calendar', 'v3', credentials=creds)
