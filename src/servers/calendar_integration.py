@@ -1,9 +1,11 @@
 from fastmcp import FastMCP
+from datetime import datetime, timedelta
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
 
 import os
 
@@ -15,15 +17,24 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar.events',
 ]
 
+@mcp.tool()
 def schedule_meeting(
-        id: str, 
-        start_time: str, 
-        end_time: str, 
-        attendees: list, 
+        id: str,
+        start_time: str,
+        end_time: str,
+        attendees: list,
         summary: str
         ):
-    creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    service = build('calendar', 'v3', credentials=creds)
+    """
+    Schedule a meeting on Google Calendar.
+    Args:
+        id (str): Calendar ID
+        start_time (str): Start time format
+        end_time (str): End time format
+        attendees (list): List of attendee email addresses
+        summary (str): Summary or title of the meeting
+    """
+    service = get_service()
 
     event = {
         'summary': summary,
@@ -35,7 +46,7 @@ def schedule_meeting(
             'dateTime': end_time,
             'timeZone': 'Canada/Pacific',
         },
-        'attendees': [{'email': email} for email in attendees],
+        'attendees': [{'email': email} for email in attendees], # List of dicts with 'email' keys
         'reminders': {
             'useDefault': False,
             'overrides': [
@@ -47,16 +58,23 @@ def schedule_meeting(
     }
 
     service.events().insert(calendarId=id, body=event).execute()
-    print(f"Meeting '{summary}' scheduled from {start_time} to {end_time} with attendees {attendees}")
     link = event.get('htmlLink', 'No link available')
-    print(f"Link: {link}")
+    return {"link": link, "message": f"Meeting '{summary}' scheduled from {start_time} to {end_time} with attendees {attendees}"}
 
 def cancel_meeting():
     pass
 
+@mcp.tool()
 def reschedule_meeting(id: str, event_id: str, new_start_time: str, new_end_time: str):
-    creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    service = build('calendar', 'v3', credentials=creds)
+    """
+    Reschedule a meeting to a new time.
+    Args:
+        id (str): Calendar ID
+        event_id (str): Event ID of the meeting to be rescheduled
+        new_start_time (str): New start time in RFC3339 format
+        new_end_time (str): New end time in RFC3339 format
+    """
+    service = get_service()
 
     event = service.events().get(calendarId=id, eventId=event_id).execute()
     event['start'] = {
@@ -70,14 +88,56 @@ def reschedule_meeting(id: str, event_id: str, new_start_time: str, new_end_time
 
     event = service.events().update(calendarId=id, eventId=event_id, body=event).execute()
     link = event.get('htmlLink', 'No link available')
-    print(f"Meeting '{event['summary']}' rescheduled from {event['start']['dateTime']} to {event['end']['dateTime']}")
-    print(f"Link: {link}")
+    # return JsonResponse
+    return {"link": link, "message": f"Meeting rescheduled to {new_start_time} - {new_end_time}"}
 
 def add_invites():
     pass
 
-def check_availability():
-    pass
+@mcp.tool()
+def check_availability(start_time: str, end_time: str):
+    """
+    Check availability of the time slots.
+    Query which time slots are free and available between the given start_time and end_time.
+    """
+    service = get_service()
+    # Call the Calendar API
+    events_result = service.events().list(calendarId='primary', timeMin=start_time,
+                                          timeMax=end_time, singleEvents=True,
+                                          orderBy='startTime').execute()
+    events = events_result.get('items', [])
+    
+    # Parse start and end dates
+    start_date = datetime.fromisoformat(start_time.replace('Z', '+00:00')).date()
+    end_date = datetime.fromisoformat(end_time.replace('Z', '+00:00')).date()
+    
+    # Build result string
+    result = {}
+    current_date = start_date
+    
+    while current_date <= end_date:
+        day_str = current_date.isoformat()
+        # Check and list events for the current day
+        day_events = [event for event in events if event['start'].get('dateTime', event['start'].get('date')).startswith(day_str)]
+        
+        # If no events, the day is marked as "free"
+        if not day_events:
+            result[day_str] = "free"
+        else:
+            # For each day that has events,list the events
+            # First list out the times that are busy then the events occupying those times
+            # Day is marked as "busy"
+            busy_times = []
+            for event in day_events:
+                start = event['start'].get('dateTime', event['start'].get('date'))
+                end = event['end'].get('dateTime', event['end'].get('date'))
+                busy_times.append(f"{start} to {end}: {event.get('summary', 'No Title')}")
+            result[day_str] = "busy"
+            result[day_str + "_details"] = "\n".join(busy_times)
+
+        current_date += timedelta(days=1)
+    
+    return "\n".join(result)
 
 @mcp.tool()
 def get_meetings():
@@ -110,3 +170,6 @@ def get_service():
             token.write(creds.to_json())
 
     return build('calendar', 'v3', credentials=creds)
+
+if __name__ == "__main__":
+    mcp.run()
