@@ -15,7 +15,7 @@ CREATE INDEX idx_users_role ON users(role);
 CREATE TABLE IF NOT EXISTS meetings (
     id SERIAL PRIMARY KEY,
     organizer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title VARCHAR(255) NOT NULL,
+    title VARCHAR(1024) NOT NULL, -- Maybe just be generous and give 1024. I believe google doesn't cap it but who needs a title longer than that lol
     description TEXT,
     start_time TIMESTAMP WITH TIME ZONE NOT NULL,
     end_time TIMESTAMP WITH TIME ZONE NOT NULL,
