@@ -68,7 +68,7 @@ def schedule_meeting(
         }
     }
 
-    service.events().insert(calendarId=id, body=event).execute()
+    service.events().update(calendarId='primary', eventId=event_id, body=event, sendUpdates='all').execute()
     link = event.get('htmlLink', 'No link available')
     return {"link": link, "message": f"Meeting '{summary}' scheduled from {start_time} to {end_time} with attendees {attendees}"}
 
@@ -190,30 +190,6 @@ def get_service():
 
     return build('calendar', 'v3', credentials=creds)
 
-# --- UPDATED FUNCTION SIGNATURE BELOW ---
-@mcp.tool()
-def schedule_meeting(
-    id: str = "primary", 
-    start_time: str = None, 
-    end_time: str = None, 
-    attendees: List[str] = [],  # <--- CHANGED from 'list' to 'List[str]'
-    summary: str = "Meeting"
-):
-    """
-    Schedule a meeting. Times must be in ISO format (e.g., 2023-11-22T15:00:00).
-    """
-    try:
-        service = get_service()
-        event = {
-            'summary': summary,
-            'start': {'dateTime': start_time, 'timeZone': 'Canada/Pacific'},
-            'end': {'dateTime': end_time, 'timeZone': 'Canada/Pacific'},
-            'attendees': [{'email': email} for email in attendees],
-        }
-        created_event = service.events().insert(calendarId=id, body=event).execute()
-        return f"Meeting scheduled: {created_event.get('htmlLink')}"
-    except Exception as e:
-        return f"Error scheduling meeting: {e}"
 
 @mcp.tool()
 def check_availability(start_time: str, end_time: str):
