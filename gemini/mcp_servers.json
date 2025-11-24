@@ -19,5 +19,12 @@
     "language": "python",
     "env_vars": null,
     "description": "Google Calendar integration for scheduling meetings and checking availability"
+  },
+  "example-server": {
+    "name": "example-server",
+    "script_path": "./example_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "Example MCP server"
   }
 }
