@@ -1,13 +1,13 @@
 from fastmcp import FastMCP
 from datetime import datetime, timedelta
 import os
-from typing import List  # <--- ADD THIS IMPORT
+from typing import List  
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from typing import Optional, List
+from typing import Optional, List,Union
 
 from pathlib import Path
 
@@ -23,54 +23,114 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar.events',
 ]
 
+
+
+
+from dateutil import parser, tz
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+def normalize_time(t: str, timezone: str) -> str:
+    """
+    Convert ANY incoming timestamp (with or without Z/offset)
+    into a clean ISO local datetime string.
+    """
+    dt = parser.isoparse(t)  # parses timestamps with or without timezone info
+    target_tz = tz.gettz(timezone)
+
+    if dt.tzinfo is None:
+        # No tz provided -> treat it as local to the chosen timezone
+        dt = dt.replace(tzinfo=target_tz)
+    else:
+        # Has a timezone/Z -> convert to local timezone
+        dt = dt.astimezone(target_tz)
+
+    # Standardize format
+    return dt.replace(microsecond=0).isoformat()
+
 @mcp.tool()
 def schedule_meeting(
         start_time: str,
         end_time: str,
         summary: str,
         id: Optional[str] = 'primary',
-        attendees: Optional[List[str]] = None,
+        attendees: Optional[Union[str, List[str]]] = None,
         timezone: Optional[str] = "America/Edmonton",
         ):
     """
     Schedule a meeting on Google Calendar.
-    Args:
-        start_time (str): Start time
-        end_time (str): End time
-        summary (str): Title/summary of the meeting
-        id (str): Calendar ID (defaults to 'primary')
-        attendees (list): Optional list of attendee email addresses
-        timezone (str): Timezone name (e.g., 'America/Edmonton', 'America/Vancouver'). Defaults to Mountain Time.
+
+    NOTE TO MODEL:
+    - Provide start_time and end_time in local time whenever possible.
+    - If you provide Z/UTC timestamps, they will be auto-converted.
     """
+
+    # ---- Normalize attendees ----
     if attendees is None:
-        attendees = []
+        attendees_list: List[str] = []
+    elif isinstance(attendees, str):
+        attendees_list = [attendees.strip()]
+    else:
+        attendees_list = attendees
+
+    logger.info("schedule_meeting CALLED with raw inputs: %s",
+                json.dumps({
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "summary": summary,
+                    "calendar_id": id,
+                    "attendees": attendees_list,
+                    "timezone": timezone,
+                }, indent=2))
+
+    # ---- FIX THE TIMEZONE BUG HERE ----
+    start_local = normalize_time(start_time, timezone)
+    end_local   = normalize_time(end_time, timezone)
+
+    logger.info("Normalized times -> start: %s | end: %s",
+                start_local, end_local)
 
     service = get_service()
 
     event = {
         'summary': summary,
         'start': {
-            'dateTime': start_time,
+            'dateTime': start_local,
             'timeZone': timezone,
         },
         'end': {
-            'dateTime': end_time,
+            'dateTime': end_local,
             'timeZone': timezone,
         },
-        'attendees': [{'email': email} for email in attendees],  # List of dicts with 'email' keys
+        'attendees': [{'email': email} for email in attendees_list],
         'reminders': {
             'useDefault': False,
             'overrides': [
-                # Change this later so its customizable, just add another field
                 {'method': 'email', 'minutes': 24 * 60},
                 {'method': 'popup', 'minutes': 10},
             ]
         }
     }
 
-    service.events().update(calendarId='primary', eventId=event_id, body=event, sendUpdates='all').execute()
-    link = event.get('htmlLink', 'No link available')
-    return {"link": link, "message": f"Meeting '{summary}' scheduled from {start_time} to {end_time} with attendees {attendees}"}
+    created = service.events().insert(
+        calendarId=id,
+        body=event,
+        sendUpdates='all'
+    ).execute()
+
+    logger.info("Created event: %s", json.dumps(created, indent=2))
+
+    link = created.get('htmlLink', 'No link available')
+
+    return {
+        "link": link,
+        "message": (
+            f"Meeting '{summary}' scheduled from {start_local} to {end_local} "
+            f"with attendees {attendees_list}, {link}"
+        ),
+    }
 
 def cancel_meeting():
     pass
