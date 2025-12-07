@@ -1,0 +1,11 @@
+This is a sample text file for testing the RAG system.
+
+It contains multiple paragraphs to test document loading and chunking functionality.
+
+The text includes various topics:
+- Document processing
+- Vector embeddings
+- Semantic search
+- Answer generation
+
+This file will be used to validate that the text loader correctly reads and processes plain text files.
