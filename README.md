@@ -3,8 +3,6 @@
 A production-ready Retrieval-Augmented Generation (RAG) system using LangChain, Pinecone, and Google Gemini.
 
 ## Features
-
-- **Dual Embedding Support**: Switch between local sentence-transformers and Google embeddings
 - **Semantic Chunking**: Intelligent document splitting using LangChain's SemanticChunker
 - **Vector Storage**: Pinecone for scalable vector search
 - **AI Generation**: Google Gemini for answer generation with source citations
@@ -45,7 +43,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system using LangChain, 
    ```
 
 3. **Configure other settings** (optional):
-   - `EMBEDDING_MODEL`: Choose `sentence-transformers` (local, free) or `google` (API-based)
+   - `EMBEDDING_MODEL`: Choose `sentence-transformers` (local, free)
    - `CHUNK_SIZE`, `CHUNK_OVERLAP`: Adjust chunking parameters
    - `TOP_K_RESULTS`: Number of results to retrieve
 
