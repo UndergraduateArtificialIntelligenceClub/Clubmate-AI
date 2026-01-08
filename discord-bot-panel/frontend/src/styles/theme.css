@@ -1,0 +1,83 @@
+:root {
+  /* --- Typography --- */
+  --font-main: 'Inter', -apple-system, sans-serif;
+
+  /* --- Light Mode (Default) --- */
+  --bg-color: #E0E5EC;
+  --text-main: #4a4a4a;
+  --text-secondary: #8d97a5;
+  --accent: #6D5DFC;
+  --accent-hover: #5849da;
+  --danger: #ff4b4b;
+  --success: #00e676;
+  --shadow-light: #ffffff;
+  --shadow-dark: #a3b1c6;
+  --border-radius: 16px;
+}
+
+[data-theme="dark"] {
+  /* --- Dark Mode --- */
+  --bg-color: #2B2D33;
+  --text-main: #e0e6ed;
+  --text-secondary: #9aa5b1;
+  --accent: #00d4ff;
+  --accent-hover: #00b8dd;
+  --shadow-light: #3e4149;
+  --shadow-dark: #1e1f23;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  margin: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* --- Neomorphic Utilities --- */
+.neu-outset {
+  background: var(--bg-color);
+  box-shadow: 9px 9px 16px var(--shadow-dark), -9px -9px 16px var(--shadow-light);
+  border-radius: var(--border-radius);
+  border: 1px solid transparent;
+}
+
+.neu-inset {
+  background: var(--bg-color);
+  box-shadow: inset 6px 6px 10px var(--shadow-dark), inset -6px -6px 10px var(--shadow-light);
+  border-radius: var(--border-radius);
+}
+
+.neu-btn {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.neu-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  color: var(--accent-hover);
+}
+
+.neu-btn:active:not(:disabled) {
+  box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+  transform: translateY(0);
+}
+
+.neu-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(1);
+}
+
+/* Scrollbar Polish */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-color); }
+::-webkit-scrollbar-thumb { background: var(--text-secondary); border-radius: 4px; }

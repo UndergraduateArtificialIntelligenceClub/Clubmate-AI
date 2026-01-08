@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Javascript
+node_modules/
+dist/
+coverage/
+
+# Database
+postgres_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Storage
+storage/

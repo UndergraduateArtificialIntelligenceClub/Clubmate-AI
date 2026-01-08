@@ -16,7 +16,7 @@ except ImportError:
     sys.exit(1)
 
 # WeatherAPI.com configuration
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY"r)
 WEATHER_BASE_URL = "http://api.weatherapi.com/v1"
 
 # Database configuration

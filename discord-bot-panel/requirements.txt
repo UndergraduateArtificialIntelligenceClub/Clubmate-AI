@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+asyncpg
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+httpx
+cryptography
+pywebview
+requests
+pystray
+Pillow
+psutil
