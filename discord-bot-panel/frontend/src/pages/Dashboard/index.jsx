@@ -60,7 +60,7 @@ export default function Dashboard() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
-        <NeomorphicCard 
+        <NeomorphicCard
           title="Recent Activity Log"
           actions={
             <Button onClick={handleClearLogs} variant="danger" style={{ padding: '6px 12px', fontSize: '12px' }}>
@@ -71,7 +71,13 @@ export default function Dashboard() {
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
             {logs.length > 0 ? logs.map(log => (
               <li key={log.id} style={{ padding: '16px 0', borderBottom: '1px solid rgba(0,0,0,0.05)', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-main)' }}>{log.action}: {log.details}</span>
+                <span style={{ color: 'var(--text-main)' }}>
+                  <b>{log.action}</b>: {
+                    typeof log.details === 'object' && log.details !== null
+                      ? Object.entries(log.details).map(([k, v]) => `${k}=${v}`).join(', ')
+                      : String(log.details || '')
+                  }
+                </span>
                 <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                   {new Date(log.created_at).toLocaleTimeString()}
                 </span>

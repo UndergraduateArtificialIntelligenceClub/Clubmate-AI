@@ -1,52 +1,66 @@
-import psutil
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import select
+"""
+Stats Router
+============
+API endpoints for dashboard statistics.
+
+Endpoints:
+- GET /stats/ - Get system statistics
+- GET /stats/logs - Get activity logs
+- DELETE /stats/logs - Clear all logs
+"""
+
+from typing import List
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_session
-from app.models.contact import Contact
-from app.models.audit import AuditLog
-from app.auth.dependencies import get_current_admin
 
-router = APIRouter(prefix="/stats", tags=["Stats"])
+from app.database import get_session
+from app.schemas.stats import StatsResponse, LogResponse
+from app.services.stats_service import StatsService
 
 
-@router.get("/")
-async def get_system_stats(
-    session: AsyncSession = Depends(get_session), user=Depends(get_current_admin)
+router = APIRouter()
+
+
+@router.get("/", response_model=StatsResponse)
+async def get_stats(
+    session: AsyncSession = Depends(get_session),
 ):
-    cpu = psutil.cpu_percent()
-    mem = psutil.virtual_memory().percent
-    contact_count = len((await session.exec(select(Contact))).all())
-    banned_count = len(
-        (await session.exec(select(Contact).where(Contact.status == "banned"))).all()
-    )
-
-    return {
-        "cpu": cpu,
-        "memory": mem,
-        "total_contacts": contact_count,
-        "active_bans": banned_count,
-        "uptime": "99.9%",
-    }
+    """
+    Get dashboard statistics.
+    
+    Returns:
+    - total_contacts: Number of contacts
+    - total_files: Number of uploaded files
+    - total_api_keys: Total API keys stored
+    - active_api_keys: Number of active (non-revoked) API keys
+    """
+    stats = await StatsService.get_stats(session)
+    return stats
 
 
-@router.get("/logs")
-async def get_audit_logs(
-    session: AsyncSession = Depends(get_session), user=Depends(get_current_admin)
+@router.get("/logs", response_model=List[LogResponse])
+async def get_logs(
+    limit: int = Query(50, ge=1, le=500, description="Max logs to return"),
+    session: AsyncSession = Depends(get_session),
 ):
-    stmt = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(20)
-    res = await session.exec(stmt)
-    return res.all()
+    """
+    Get recent activity logs.
+    
+    Logs are returned in reverse chronological order (newest first).
+    """
+    logs, total = await StatsService.get_logs(session, limit=limit)
+    return logs
 
 
-@router.delete("/logs")
-async def clear_audit_logs(
-    session: AsyncSession = Depends(get_session), user=Depends(get_current_admin)
+@router.delete("/logs", status_code=204)
+async def clear_logs(
+    session: AsyncSession = Depends(get_session),
 ):
-    # In a real app, we might not want to delete ALL logs, but for this feature:
-    stmt = select(AuditLog)
-    results = await session.exec(stmt)
-    for log in results:
-        await session.delete(log)
-    await session.commit()
-    return {"status": "cleared"}
+    """
+    Clear all activity logs.
+    
+    Warning: This action is irreversible.
+    """
+    await StatsService.clear_logs(session)
+    return None

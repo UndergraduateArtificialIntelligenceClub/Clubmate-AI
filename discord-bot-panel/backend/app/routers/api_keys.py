@@ -1,59 +1,78 @@
+"""
+API Keys Router
+===============
+API endpoints for secure API key management.
+
+Endpoints:
+- GET /api-keys/ - List all keys (masked values)
+- POST /api-keys/ - Create new key
+- DELETE /api-keys/{id} - Revoke/delete key
+"""
+
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_session
-from app.models.secure import APIKey
-from app.models.user import User
-from app.core.security import encrypt_value
-from app.auth.dependencies import get_current_admin
-from pydantic import BaseModel
 
-router = APIRouter(prefix="/api-keys", tags=["Keys"])
+from app.database import get_session
+from app.schemas.api_key import APIKeyCreate, APIKeyResponse
+from app.services.key_vault_service import KeyVaultService
 
 
-class KeyCreate(BaseModel):
-    name: str
-    value: str
+router = APIRouter()
 
 
-@router.get("/")
-async def list_keys(
+@router.get("/", response_model=List[APIKeyResponse])
+async def list_api_keys(
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_admin),
 ):
-    stmt = select(APIKey).where(APIKey.owner_user_id == user.id)
-    res = await session.execute(stmt)
-    return [
-        {"id": k.id, "name": k.name, "masked": "******", "created_at": k.created_at}
-        for k in res.scalars().all()
-    ]
+    """
+    List all API keys.
+    
+    Note: Returns masked values only - the actual key is never exposed
+    after initial creation.
+    """
+    keys, total = await KeyVaultService.get_all(session)
+    return keys
 
 
-@router.post("/")
-async def create_key(
-    data: KeyCreate,
+@router.post("/", response_model=APIKeyResponse, status_code=201)
+async def create_api_key(
+    data: APIKeyCreate,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_admin),
 ):
-    ct, nonce, tag = encrypt_value(data.value)
-    key = APIKey(
-        owner_user_id=user.id, name=data.name, encrypted_key=ct, nonce=nonce, tag=tag
-    )
-    session.add(key)
-    await session.commit()
-    return {"status": "ok"}
+    """
+    Store a new API key securely.
+    
+    Required fields:
+    - name: Service name (e.g., "OpenAI API Key")
+    - value: The actual API key
+    
+    IMPORTANT: The actual key value is encrypted and will NOT be returned
+    after this request. Store it safely.
+    """
+    try:
+        api_key = await KeyVaultService.create(
+            session,
+            name=data.name,
+            value=data.value,
+        )
+        return api_key
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.delete("/{key_id}")
-async def delete_key(
+@router.delete("/{key_id}", status_code=204)
+async def delete_api_key(
     key_id: int,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_admin),
 ):
-    key = await session.get(APIKey, key_id)
-    if not key or key.owner_user_id != user.id:
-        raise HTTPException(status_code=404, detail="Key not found")
-
-    await session.delete(key)
-    await session.commit()
-    return {"status": "deleted"}
+    """
+    Revoke/delete an API key.
+    
+    This permanently removes the key from the system.
+    """
+    deleted = await KeyVaultService.delete(session, key_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return None

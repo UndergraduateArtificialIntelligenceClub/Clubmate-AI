@@ -1,79 +1,105 @@
-from fastapi import APIRouter, Depends, UploadFile, HTTPException
-from sqlmodel import select
+"""
+Files Router
+============
+API endpoints for file management.
+
+Endpoints:
+- GET /files/ - List all files
+- POST /files/upload - Upload a new file
+- GET /files/{id}/download - Download a file
+- DELETE /files/{id} - Delete a file
+"""
+
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-import os
-import shutil
-from app.db.session import get_session
-from app.models.file import FileRecord
-from app.auth.dependencies import get_current_admin
 
-router = APIRouter(prefix="/files", tags=["Files"])
-UPLOAD_DIR = "../storage/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+from app.database import get_session
+from app.schemas.file import FileResponse as FileSchema
+from app.services.file_service import FileService
 
 
-@router.get("/")
+router = APIRouter()
+
+
+@router.get("/", response_model=List[FileSchema])
 async def list_files(
-    session: AsyncSession = Depends(get_session), user=Depends(get_current_admin)
-):
-    stmt = select(FileRecord).order_by(FileRecord.created_at.desc())
-    res = await session.execute(stmt)
-    return res.scalars().all()
-
-
-@router.post("/upload")
-async def upload_file(
-    file: UploadFile,
     session: AsyncSession = Depends(get_session),
-    user=Depends(get_current_admin),
 ):
-    # Create folder with the exact name of the file (minus extension) or full name? 
-    # User said "folder with the same exact name". Let's assume filename.
-    # If filename is "bot.py", folder is "storage/uploads/bot.py/" and file is "storage/uploads/bot.py/bot.py"
-    # This ensures uniqueness and grouping if they add more related files later?
-    # Or maybe they meant "storage/uploads/bot/" for "bot.py"?
-    # I'll use the full filename for the folder to be safe and "exact".
+    """
+    List all uploaded files.
     
-    file_folder = os.path.join(UPLOAD_DIR, file.filename)
-    os.makedirs(file_folder, exist_ok=True)
-    
-    file_path = os.path.join(file_folder, file.filename)
+    Returns file metadata (not the actual file content).
+    """
+    files, total = await FileService.get_all(session)
+    return files
 
-    # Save to disk
+
+@router.post("/upload", response_model=FileSchema, status_code=201)
+async def upload_file(
+    file: UploadFile = FastAPIFile(..., description="File to upload"),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Upload a new file.
+    
+    Accepts multipart/form-data with a 'file' field.
+    Allowed file types: pdf, doc, docx, xls, xlsx, csv, txt, png, jpg, jpeg, gif
+    Maximum size: 50MB
+    """
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Could not save file: {str(e)}")
+        db_file = await FileService.upload(session, file)
+        return db_file
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # Save DB record
-    record = FileRecord(
+
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Download a file by ID.
+    
+    Returns the actual file content with appropriate Content-Disposition header.
+    """
+    file = await FileService.get_by_id(session, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = FileService.get_file_path(file)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=file_path,
         filename=file.filename,
-        file_size_bytes=os.path.getsize(file_path),
-        mime_type=file.content_type or "application/octet-stream",
-        local_path=file_path,
+        media_type=file.mime_type,
     )
-    session.add(record)
-    await session.commit()
-    await session.refresh(record)
-    return record
 
 
-@router.delete("/{file_id}")
+@router.get("/{file_id}", response_model=FileSchema)
+async def get_file(
+    file_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get file metadata by ID (not the actual file content)."""
+    file = await FileService.get_by_id(session, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    return file
+
+
+@router.delete("/{file_id}", status_code=204)
 async def delete_file(
     file_id: int,
     session: AsyncSession = Depends(get_session),
-    user=Depends(get_current_admin),
 ):
-    file_record = await session.get(FileRecord, file_id)
-    if not file_record:
+    """Delete a file by ID (removes from both database and filesystem)."""
+    deleted = await FileService.delete(session, file_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="File not found")
-
-    # Remove from disk
-    if os.path.exists(file_record.local_path):
-        os.remove(file_record.local_path)
-
-    # Remove from DB
-    await session.delete(file_record)
-    await session.commit()
-    return {"status": "deleted", "id": file_id}
+    return None
