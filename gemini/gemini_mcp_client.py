@@ -42,7 +42,7 @@ class ServerConfig:
 class ConversationMessage:
     """A message in the conversation history"""
 
-    role: str  # 'user' or 'assistant'
+    role: str  # 'user' or 'model'
     content: str
 
 
@@ -285,9 +285,9 @@ class GeminiMCPClient:
                 max_tokens,
             )
 
-            # Add final assistant response to history
+            # Add final model response to history
             self.conversation_history.append(
-                ConversationMessage("assistant", final_text)
+                ConversationMessage("model", final_text)
             )
 
             logger.info(f"Chat completed with {server}")
