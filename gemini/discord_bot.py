@@ -120,8 +120,8 @@ async def chat_command(ctx, *, prompt: str):
 
         try:
             # We pass the prompt to the client.
-            # If you want to change temperature, change it in the client.chat() call below manually
-            response = await client.chat(prompt, temperature=0.7)
+            # Using gemini-2.5-flash-lite for better quota availability
+            response = await client.chat(prompt, model="gemini-2.5-flash-lite", temperature=0.7)
 
             # Send response (split if too long)
             for chunk in split_message(response):

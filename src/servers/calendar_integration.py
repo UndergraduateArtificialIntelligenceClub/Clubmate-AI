@@ -1,5 +1,5 @@
 from fastmcp import FastMCP
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 from typing import List  
 
@@ -11,8 +11,8 @@ from typing import Optional, List,Union
 
 from pathlib import Path
 
-# Get the directory where credentials are stored (right now its in Clu)
-SCRIPT_DIR = Path(__file__).parent.parent  # Points to src/
+# Get the directory where credentials are stored (in project root)
+SCRIPT_DIR = Path(__file__).parent.parent.parent  # Points to project root
 CREDENTIALS_PATH = SCRIPT_DIR / "credentials.json"
 TOKEN_PATH = SCRIPT_DIR / "token.json"
 
@@ -85,7 +85,6 @@ def schedule_meeting(
                     "timezone": timezone,
                 }, indent=2))
 
-    # ---- FIX THE TIMEZONE BUG HERE ----
     start_local = normalize_time(start_time, timezone)
     end_local   = normalize_time(end_time, timezone)
 
@@ -132,98 +131,282 @@ def schedule_meeting(
         ),
     }
 
-def cancel_meeting():
-    pass
+@mcp.tool()
+def cancel_meeting(
+        event_id: Optional[str] = None,
+        meeting_name: Optional[str] = None,
+        date: Optional[str] = None,
+        calendar_id: Optional[str] = 'primary',
+        send_updates: Optional[str] = 'all'
+        ):
+    """
+    Cancel a meeting on Google Calendar.
+
+    NOTE TO MODEL:
+    - You can either provide event_id directly, OR provide meeting_name + date to find the meeting.
+    - If meeting_name and date are provided, the function will automatically find the meeting.
+
+    Args:
+        event_id (str): Optional - The ID of the event to cancel
+        meeting_name (str): Optional - Name of the meeting to find and cancel
+        date (str): Optional - Date of the meeting
+        calendar_id (str): Calendar ID
+        send_updates (str): Whether to send cancellation notifications: 'all', 'externalOnly', or 'none'
+
+    Returns:
+        dict: A message confirming the cancellation
+    """
+    try:
+        # If event_id not provided, try to find it using meeting_name and date
+        if not event_id:
+            if not meeting_name or not date:
+                return {
+                    "error": "Either provide event_id, or both meeting_name and date"
+                }
+
+            # Find the meeting
+            find_result = find_meeting_by_name_and_date(meeting_name, date, calendar_id)
+
+            if "error" in find_result:
+                return find_result
+
+            if find_result.get("multiple_matches"):
+                # Multiple meetings found - return them for user to choose
+                return {
+                    "error": "Multiple meetings found. Please be more specific.",
+                    "meetings": find_result["meetings"]
+                }
+
+            # Single match found
+            event_id = find_result["meeting"]["event_id"]
+            logger.info(f"Found meeting '{meeting_name}' with event_id: {event_id}")
+
+        service = get_service()
+
+        # Get the event details before deleting
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        summary = event.get('summary', 'Untitled Event')
+
+        # Delete the event
+        service.events().delete(
+            calendarId=calendar_id,
+            eventId=event_id,
+            sendUpdates=send_updates
+        ).execute()
+
+        logger.info("Cancelled event: %s (ID: %s)", summary, event_id)
+
+        return {
+            "message": f"Meeting '{summary}' has been cancelled successfully.",
+            "event_id": event_id
+        }
+    except Exception as e:
+        logger.error("Error cancelling meeting: %s", str(e))
+        return {
+            "error": f"Failed to cancel meeting: {str(e)}"
+        }
 
 @mcp.tool()
 def reschedule_meeting(
-        id: str,
         new_start_time: str,
         new_end_time: str,
-        event_id: Optional[str] = 'primary',
+        event_id: Optional[str] = None,
+        meeting_name: Optional[str] = None,
+        original_date: Optional[str] = None,
+        calendar_id: Optional[str] = 'primary',
         timezone: Optional[str] = "America/Edmonton",
+        send_updates: Optional[str] = 'all'
         ):
     """
     Reschedule a meeting to a new time.
+
+    NOTE TO MODEL:
+    - You can either provide event_id directly, OR provide meeting_name + original_date to find the meeting.
+    - If meeting_name and original_date are provided, the function will automatically find the meeting.
+    - Provide new_start_time and new_end_time in local time whenever possible.
+    - If you provide Z/UTC timestamps, they will be auto-converted.
+
     Args:
-        id (str): Calendar ID
         new_start_time (str): New start time
         new_end_time (str): New end time
-        event_id (str): Event ID of the meeting to be rescheduled (defaults to 'primary')
-        timezone (str): timezone name (e.g., 'America/Edmonton', 'America/Vancouver'). Defaults to Mountain Time.
+        event_id (str): Optional - Event ID of the meeting to be rescheduled
+        meeting_name (str): Optional - Name of the meeting to find
+        original_date (str): Optional - Date of the meeting to find
+        calendar_id (str): Calendar ID
+        timezone (str): Timezone name (e.g., 'America/Edmonton', 'America/Vancouver'). Defaults to Mountain Time.
+        send_updates (str): Whether to send update notifications: 'all', 'externalOnly', or 'none' (defaults to 'all')
+
+    Returns:
+        dict: Link and message about the rescheduled meeting
     """
-    service = get_service()
+    try:
+        # If event_id not provided, try to find it using meeting_name and original_date
+        if not event_id:
+            if not meeting_name or not original_date:
+                return {
+                    "error": "Either provide event_id, or both meeting_name and original_date"
+                }
 
-    event = service.events().get(calendarId=id, eventId=event_id).execute()
-    event['start'] = {
-        'dateTime': new_start_time,
-        'timeZone': timezone,
-    }
-    event['end'] = {
-        'dateTime': new_end_time,
-        'timeZone': timezone,
-    }
+            # Find the meeting
+            find_result = find_meeting_by_name_and_date(meeting_name, original_date, calendar_id)
 
-    event = service.events().update(calendarId='primary', eventId=event_id, body=event).execute()
-    link = event.get('htmlLink', 'No link available')
-    # return JsonResponse
-    return {"link": link, "message": f"Meeting rescheduled to {new_start_time} - {new_end_time}"}
+            if "error" in find_result:
+                return find_result
+
+            if find_result.get("multiple_matches"):
+                # Multiple meetings found - return them for user to choose
+                return {
+                    "error": "Multiple meetings found. Please be more specific.",
+                    "meetings": find_result["meetings"]
+                }
+
+            # Single match found
+            event_id = find_result["meeting"]["event_id"]
+            logger.info(f"Found meeting '{meeting_name}' with event_id: {event_id}")
+
+        logger.info("reschedule_meeting CALLED with raw inputs: %s",
+                    json.dumps({
+                        "event_id": event_id,
+                        "new_start_time": new_start_time,
+                        "new_end_time": new_end_time,
+                        "calendar_id": calendar_id,
+                        "timezone": timezone,
+                    }, indent=2))
+
+        # Normalize times to handle timezone conversions
+        start_local = normalize_time(new_start_time, timezone)
+        end_local = normalize_time(new_end_time, timezone)
+
+        logger.info("Normalized times -> start: %s | end: %s",
+                    start_local, end_local)
+
+        service = get_service()
+
+        # Get the existing event
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        old_summary = event.get('summary', 'Untitled Event')
+
+        # Update the event times
+        event['start'] = {
+            'dateTime': start_local,
+            'timeZone': timezone,
+        }
+        event['end'] = {
+            'dateTime': end_local,
+            'timeZone': timezone,
+        }
+
+        # Update the event on the calendar
+        updated_event = service.events().update(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body=event,
+            sendUpdates=send_updates
+        ).execute()
+
+        link = updated_event.get('htmlLink', 'No link available')
+
+        logger.info("Rescheduled event: %s", json.dumps(updated_event, indent=2))
+
+        return {
+            "link": link,
+            "message": (
+                f"Meeting '{old_summary}' rescheduled from {start_local} to {end_local}. "
+                f"{link}"
+            )
+        }
+    except Exception as e:
+        logger.error("Error rescheduling meeting: %s", str(e))
+        return {
+            "error": f"Failed to reschedule meeting: {str(e)}"
+        }
 
 def add_invites():
     pass
 
-@mcp.tool()
-def check_availability(start_time: str, end_time: str):
+def find_meeting_by_name_and_date(
+        meeting_name: str,
+        date: str,
+        calendar_id: Optional[str] = 'primary'
+        ):
     """
-    Check availability of the time slots.
-    Query which time slots are free and available between the given start_time and end_time.
+    Internal helper function to find a meeting by its name/summary and date.
+
+    Args:
+        meeting_name (str): The name or summary of the meeting to find (case-insensitive partial match)
+        date (str): The date to search on (e.g., '2026-01-20' or '2026-01-20T00:00:00')
+        calendar_id (str): Calendar ID (defaults to 'primary')
+
+    Returns:
+        dict: Meeting details including event_id, or error message
     """
-    service = get_service()
-    # Call the Calendar API
-    events_result = service.events().list(calendarId='primary', timeMin=start_time,
-                                          timeMax=end_time, singleEvents=True,
-                                          orderBy='startTime').execute()
-    events = events_result.get('items', [])
-    
-    # Parse start and end dates
-    start_date = datetime.fromisoformat(start_time.replace('Z', '+00:00')).date()
-    end_date = datetime.fromisoformat(end_time.replace('Z', '+00:00')).date()
-    
-    # Build result string
-    result = {}
-    current_date = start_date
-    
-    while current_date <= end_date:
-        day_str = current_date.isoformat()
-        # Check and list events for the current day
-        day_events = [event for event in events if event['start'].get('dateTime', event['start'].get('date')).startswith(day_str)]
-        
-        # If no events, the day is marked as "free"
-        if not day_events:
-            result[day_str] = "free"
+    try:
+        service = get_service()
+
+        # Parse the date and create time range for the entire day
+        from dateutil import parser as date_parser
+        search_date = date_parser.parse(date).date()
+        time_min = f"{search_date}T00:00:00Z"
+        time_max = f"{search_date}T23:59:59Z"
+
+        # Get all events for that day
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        events = events_result.get('items', [])
+
+        if not events:
+            return {
+                "error": f"No meetings found on {search_date}"
+            }
+
+        # Search for meetings matching the name (case-insensitive)
+        matching_events = []
+        meeting_name_lower = meeting_name.lower()
+
+        for event in events:
+            summary = event.get('summary', '').lower()
+            if meeting_name_lower in summary:
+                matching_events.append({
+                    'event_id': event['id'],
+                    'summary': event.get('summary', 'No Title'),
+                    'start': event['start'].get('dateTime', event['start'].get('date')),
+                    'end': event['end'].get('dateTime', event['end'].get('date')),
+                })
+
+        if not matching_events:
+            # List all meetings on that day for reference
+            all_meetings = [event.get('summary', 'No Title') for event in events]
+            return {
+                "error": f"No meeting found with name '{meeting_name}' on {search_date}. "
+                        f"Available meetings on this day: {', '.join(all_meetings)}"
+            }
+
+        if len(matching_events) == 1:
+            return {
+                "success": True,
+                "meeting": matching_events[0],
+                "message": f"Found meeting: {matching_events[0]['summary']}"
+            }
         else:
-            # For each day that has events,list the events
-            # First list out the times that are busy then the events occupying those times
-            # Day is marked as "busy"
-            busy_times = []
-            for event in day_events:
-                start = event['start'].get('dateTime', event['start'].get('date'))
-                end = event['end'].get('dateTime', event['end'].get('date'))
-                busy_times.append(f"{start} to {end}: {event.get('summary', 'No Title')}")
-            result[day_str] = "busy"
-            result[day_str + "_details"] = "\n".join(busy_times)
+            # Multiple matches - return all for user confirmation
+            return {
+                "success": True,
+                "multiple_matches": True,
+                "meetings": matching_events,
+                "message": f"Found {len(matching_events)} meetings matching '{meeting_name}'. Please specify which one."
+            }
 
-        current_date += timedelta(days=1)
-
-    # Convert result dict to formatted string
-    output = []
-    for key, value in result.items():
-        output.append(f"{key}: {value}")
-    return "\n".join(output)
-
-@mcp.tool()
-def get_meetings():
-    pass
+    except Exception as e:
+        logger.error(f"Error finding meeting: {e}")
+        return {
+            "error": f"Failed to find meeting: {str(e)}"
+        }
 
 def update_meeting_details():
     pass
@@ -239,14 +422,20 @@ def get_service():
     # If there are no (valid) credentials available, let the user log in
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+                # Save the refreshed credentials
+                with open(TOKEN_PATH, 'w') as token:
+                    token.write(creds.to_json())
+            except Exception as e:
+                logger.error(f"Failed to refresh credentials: {e}")
+                raise ValueError(
+                    "Google Calendar credentials expired. Please run 'python src/authenticate.py' to re-authenticate."
+                )
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CREDENTIALS_PATH), SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open(TOKEN_PATH, 'w') as token:
-            token.write(creds.to_json())
+            raise ValueError(
+                "Google Calendar not authenticated. Please run 'python src/authenticate.py' first."
+            )
 
     return build('calendar', 'v3', credentials=creds)
 
