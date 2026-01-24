@@ -2,8 +2,9 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   Home, Key, Users, Folder, Settings, LogOut, Command,
-  Bot, MessageSquare, FileText
+  Bot, MessageSquare, FileText, User
 } from 'lucide-react';
+
 
 const NavItem = ({ to, icon: Icon, label }) => (
   <NavLink
