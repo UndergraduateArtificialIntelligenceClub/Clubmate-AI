@@ -10,6 +10,15 @@ const client = axios.create({
   },
 });
 
+// Add request interceptor to include auth token
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export default {
   // Contacts
   getContacts: () => client.get('/contacts/'),
@@ -34,7 +43,28 @@ export default {
   clearLogs: () => client.delete('/stats/logs'),
 
   // Google Auth
-  connectGoogle: () => window.location.href = `${API_URL}/auth/google/connect`,
+  connectGoogle: async () => {
+    try {
+      const response = await client.get('/auth/google/connect');
+      const url = response.data.url;
+
+      if (window.pywebview) {
+        window.pywebview.api.open_external(url);
+      } else {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error("Failed to initiate Google connection", error);
+    }
+  },
   getGoogleStatus: () => client.get('/auth/google/status'),
   disconnectGoogle: () => client.delete('/auth/google/disconnect'),
+
+  // Discord Auth (System Browser)
+  initiateDiscordLogin: () => client.get('/auth/discord/login?user_redirect=true'),
+  pollDiscordLogin: (state) => client.get(`/auth/discord/poll?state=${state}`),
+
+  // Setup
+  getSetupStatus: () => client.get('/setup/status'),
+  saveSetupConfig: (data) => client.post('/setup/config', data),
 };

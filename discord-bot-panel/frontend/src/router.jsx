@@ -3,13 +3,22 @@ import { createBrowserRouter, Outlet } from 'react-router-dom';
 import { Sidebar } from './components/global/Sidebar';
 import { Topbar } from './components/global/Topbar';
 
-// Pages
+// Existing Pages
 import Login from './pages/Login';
+import Setup from './pages/Setup';
+import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import APIKeys from './pages/APIKeys';
-import GoogleAuth from './pages/GoogleAuth'; // (Use code from previous response)
-import Files from './pages/Files';           // (Use code from previous response)
-import Contacts from './pages/Contacts';     // (Use code from previous response)
+import Accounts from './pages/Accounts';
+
+import Files from './pages/Files';
+import Contacts from './pages/Contacts';
+import { ProtectedRoute } from './components/global/ProtectedRoute';
+
+// New Bot Management Pages
+import BotSettings from './pages/BotSettings';
+import ChatTesting from './pages/ChatTesting';
+import RequestLogs from './pages/RequestLogs';
 
 const AppLayout = () => (
   <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-color)' }}>
@@ -23,15 +32,28 @@ const AppLayout = () => (
 
 export const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
+  { path: '/setup', element: <Setup /> },
+  { path: '/auth/callback', element: <AuthCallback /> },
   {
     path: '/',
-    element: <AppLayout />,
+    element: <ProtectedRoute />,
     children: [
-      { path: '/', element: <Dashboard /> },
-      { path: '/api-keys', element: <APIKeys /> },
-      { path: '/google', element: <GoogleAuth /> },
-      { path: '/files', element: <Files /> },
-      { path: '/contacts', element: <Contacts /> },
+      {
+        element: <AppLayout />,
+        children: [
+          { path: '/', element: <Dashboard /> },
+          { path: '/api-keys', element: <APIKeys /> },
+          { path: '/accounts', element: <Accounts /> },
+          { path: '/files', element: <Files /> },
+          { path: '/contacts', element: <Contacts /> },
+          // New Bot Management Routes
+          { path: '/bot-settings', element: <BotSettings /> },
+          { path: '/chat-testing', element: <ChatTesting /> },
+          { path: '/request-logs', element: <RequestLogs /> },
+        ]
+      }
     ]
   }
 ]);
+
+

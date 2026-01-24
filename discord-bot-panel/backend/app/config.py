@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     
     # Token expiration (in minutes)
-    access_token_expire_minutes: int = 60 * 24  # 24 hours
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     
     # Fernet encryption key for API keys (generate with: from cryptography.fernet import Fernet; Fernet.generate_key())
     encryption_key: str = "your-fernet-key-here"

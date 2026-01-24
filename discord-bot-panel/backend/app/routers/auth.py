@@ -1,46 +1,196 @@
 """
 Auth Router
 ===========
-Authentication endpoints for Google OAuth.
+Authentication endpoints for Discord (Login) and Google (Linking).
 
 Endpoints:
-- GET /auth/google/connect - Initiate Google OAuth flow
-- GET /auth/google/callback - OAuth callback handler
-- GET /auth/google/status - Check connection status
-- DELETE /auth/google/disconnect - Remove connection
+- POST /auth/discord/login - Initiate Discord OAuth flow
+- GET /auth/discord/callback - OAuth callback handler & Login
+- GET /auth/google/connect - Initiate Google OAuth flow (Account Linking)
+- GET /auth/google/callback - OAuth callback handler (Account Linking)
+- GET /auth/me - Get current user info
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 
 from app.config import get_settings
 from app.database import get_session
 from app.schemas.auth import GoogleStatusResponse
 from app.services.auth_service import AuthService
+from app.models import User
 
 settings = get_settings()
 router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+# Dependency to get current user
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_session)
+) -> User:
+    payload = AuthService.verify_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user_id: str = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    user = await AuthService.get_user_by_id(session, int(user_id))
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 # ============================================================
-# GOOGLE OAUTH
+# DISCORD OAUTH (LOGIN)
+# ============================================================
+
+# In-memory store for pending logins (state -> token_data)
+# For a production app with multiple replicas, use Redis.
+pending_logins = {}
+
+@router.get("/discord/login")
+async def login_discord(
+    user_redirect: bool = False # If True, return JSON with URL for system browser
+):
+    """
+    Initiate Discord OAuth flow for login.
+    """
+    if not settings.discord_client_id:
+        raise HTTPException(status_code=501, detail="Discord OAuth not configured")
+        
+    logout_url = "https://discord.com/api/oauth2/authorize"
+    # To read/write messages, we typically need the bot to be added to the server.
+    # We add 'bot' scope and permissions=68608 (Read Messages, Send Messages).
+    # 'applications.commands' is also useful for slash commands.
+    scope = "identify email bot applications.commands"
+    permissions = "68608" # Read Messages + Send Messages
+    
+    # Generate a random state for security and polling
+    import uuid
+    state = str(uuid.uuid4())
+    
+    # Prepare pending entry
+    if user_redirect:
+        pending_logins[state] = {"status": "pending"}
+
+    oauth_url = (
+        f"{logout_url}?"
+        f"client_id={settings.discord_client_id}"
+        f"&redirect_uri={settings.discord_redirect_uri}"
+        "&response_type=code"
+        f"&scope={scope}"
+        f"&permissions={permissions}"
+        f"&state={state}"
+    )
+    
+    if user_redirect:
+        return {"url": oauth_url, "state": state}
+    
+    return RedirectResponse(url=oauth_url)
+
+@router.get("/discord/callback")
+async def discord_callback(
+    code: str,
+    state: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Handle Discord OAuth callback.
+    """
+    try:
+        auth_data = await AuthService.discord_login(session, code)
+        
+        # If this state is being tracked (system browser login), update the store
+        if state in pending_logins:
+            pending_logins[state] = {
+                "status": "complete",
+                "auth_data": auth_data
+            }
+            # Return a simple success page for the external browser
+            html_content = """
+            <html>
+                <head><title>Login Successful</title></head>
+                <body style="background-color: #1a1b1e; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh;">
+                    <div style="text-align: center;">
+                        <h1 style="color: #5865F2;">Login Successful!</h1>
+                        <p>You can close this window and return to the application.</p>
+                        <script>window.close();</script>
+                    </div>
+                </body>
+            </html>
+            """
+            return Response(content=html_content, media_type="text/html")
+
+        # Standard flow (webview redirect)
+        frontend_url = f"http://localhost:5173/auth/callback?token={auth_data['access_token']}"
+        return RedirectResponse(url=frontend_url)
+        
+    except Exception as e:
+        print(f"Login error: {e}")
+        if state in pending_logins:
+             pending_logins[state] = {"status": "error", "message": str(e)}
+             return Response(content="Login failed. Check app for details.", media_type="text/plain")
+
+        return RedirectResponse(url="http://localhost:5173/login?error=auth_failed")
+
+@router.get("/discord/poll")
+async def poll_discord_login(state: str):
+    """
+    Poll checking if external login is complete.
+    """
+    if state not in pending_logins:
+        raise HTTPException(status_code=404, detail="Invalid or expired session")
+    
+    data = pending_logins[state]
+    
+    if data["status"] == "pending":
+        return {"status": "pending"}
+    
+    if data["status"] == "complete":
+        # Clean up
+        del pending_logins[state]
+        return {"status": "complete", "token": data["auth_data"]["access_token"]}
+        
+    if data["status"] == "error":
+        del pending_logins[state]
+        raise HTTPException(status_code=400, detail=data.get("message", "Login failed"))
+    
+    return {"status": "unknown"}
+
+@router.get("/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """Get current logged in user."""
+    return current_user
+
+# ============================================================
+# GOOGLE OAUTH (ACCOUNT LINKING)
 # ============================================================
 
 @router.get("/google/connect")
-async def connect_google():
+async def connect_google(
+    current_user: User = Depends(get_current_user), # Requires login
+):
     """
-    Initiate Google OAuth flow.
-    
-    Redirects the user to Google's OAuth consent screen.
+    Initiate Google OAuth flow for account linking.
     """
     if not settings.google_client_id:
         raise HTTPException(
             status_code=501,
-            detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+            detail="Google OAuth not configured."
         )
     
-    # Build OAuth URL
     # Scopes for Drive and Gmail access
     scopes = [
         "https://www.googleapis.com/auth/drive.file",
@@ -58,21 +208,29 @@ async def connect_google():
         f"&scope={' '.join(scopes)}"
         "&access_type=offline"
         "&prompt=consent"
+        f"&state={current_user.id}"
     )
     
-    return RedirectResponse(url=oauth_url)
+    return {"url": oauth_url}
 
 
 @router.get("/google/callback")
 async def google_callback(
     code: str,
+    state: str = None,
     session: AsyncSession = Depends(get_session),
 ):
     """
     Handle Google OAuth callback.
-    
-    Exchanges authorization code for tokens and stores them.
     """
+    if not state:
+        raise HTTPException(status_code=400, detail="Missing state parameter")
+        
+    try:
+        user_id = int(state)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+
     import httpx
     
     # Exchange code for tokens
@@ -91,17 +249,21 @@ async def google_callback(
         )
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail="Failed to exchange authorization code"
-            )
+            print(response.text)
+            return RedirectResponse(url="http://localhost:5173/google?error=auth_failed")
         
         token_data = response.json()
     
-    # For demo purposes, using a fixed user_id
-    # In production, get this from session/auth
-    user_id = 1
-    
+    # Fetch Google user info to get the email
+    async with httpx.AsyncClient() as client:
+        userinfo_url = "https://www.googleapis.com/oauth2/v3/userinfo"
+        userinfo_response = await client.get(
+            userinfo_url,
+            headers={"Authorization": f"Bearer {token_data['access_token']}"}
+        )
+        userinfo = userinfo_response.json() if userinfo_response.status_code == 200 else {}
+        account_email = userinfo.get("email")
+
     from datetime import datetime, timezone, timedelta
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data.get("expires_in", 3600))
     
@@ -112,47 +274,43 @@ async def google_callback(
         refresh_token=token_data.get("refresh_token"),
         expires_at=expires_at,
         scope=token_data.get("scope"),
+        account_email=account_email,
     )
     
-    # Redirect back to frontend with success message
     return RedirectResponse(url="http://localhost:5173/google?status=success")
 
 
 @router.get("/google/status", response_model=GoogleStatusResponse)
 async def get_google_status(
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """
     Check if Google account is connected.
-    
-    Returns connection status and connected email if available.
     """
-    # For demo purposes, using a fixed user_id
-    # In production, get this from session/auth
-    user_id = 1
+    is_connected = await AuthService.is_google_connected(session, current_user.id)
     
-    is_connected = await AuthService.is_google_connected(session, user_id)
+    # Get email from token if available
+    email = None
+    if is_connected:
+        token = await AuthService.get_google_token(session, current_user.id)
+        if token:
+            email = token.account_email or current_user.email  # Fallback only if email unknown
     
     return GoogleStatusResponse(
         is_connected=is_connected,
-        email=None,  # Could fetch from Google userinfo API
+        email=email, 
     )
-
 
 @router.delete("/google/disconnect", status_code=204)
 async def disconnect_google(
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """
     Disconnect Google account.
-    
-    Removes stored OAuth tokens.
     """
-    # For demo purposes, using a fixed user_id
-    # In production, get this from session/auth
-    user_id = 1
-    
-    disconnected = await AuthService.disconnect_google(session, user_id)
+    disconnected = await AuthService.disconnect_google(session, current_user.id)
     if not disconnected:
         raise HTTPException(status_code=404, detail="Google account not connected")
     

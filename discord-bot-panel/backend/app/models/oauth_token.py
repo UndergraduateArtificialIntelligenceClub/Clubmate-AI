@@ -66,6 +66,13 @@ class OAuthToken(BaseModel, TimestampMixin, table=True):
         description="OAuth scopes granted"
     )
     
+    # Store which specific account was connected (e.g. email)
+    account_email: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        description="The email/identifier of the connected account"
+    )
+    
     class Config:
         # Composite index for efficient lookups
         table_args = {

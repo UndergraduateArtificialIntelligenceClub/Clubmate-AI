@@ -165,6 +165,19 @@ class AppLauncher:
             except Exception as e:
                 print(f"[LAUNCHER] Error stopping process: {e}")
     
+class JsApi:
+    """
+    JavaScript API exposed to the frontend.
+    """
+    def open_external(self, url):
+        """Open a URL in the default system browser."""
+        import webbrowser
+        webbrowser.open(url)
+
+
+class AppLauncherWithApi(AppLauncher):
+    """Extended launcher with JS API support."""
+    
     def run(self):
         """Main entry point - starts everything and opens the window."""
         print("=" * 50)
@@ -185,14 +198,22 @@ class AppLauncher:
         
         # Step 5: Open webview window
         print("[LAUNCHER] Opening application window...")
+        
+        # Create API instance
+        js_api = JsApi()
+        
         window = webview.create_window(
             "Discord Bot Panel",
             url=self.frontend_url,
             width=1280,
             height=800,
-            background_color='#e0e5ec'
+            background_color='#e0e5ec',
+            js_api=js_api
         )
-        webview.start()
+        webview.start(
+            storage_path=os.path.join(self.root_dir, "data", "webview"),
+            private_mode=False
+        )
         
         # Cleanup after window closes
         self.cleanup()
@@ -200,7 +221,7 @@ class AppLauncher:
 
 
 if __name__ == "__main__":
-    launcher = AppLauncher()
+    launcher = AppLauncherWithApi()
     try:
         launcher.run()
     except KeyboardInterrupt:

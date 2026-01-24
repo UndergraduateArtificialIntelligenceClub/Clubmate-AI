@@ -27,6 +27,7 @@ from app.routers import (
     files,
     api_keys,
     stats,
+    setup,
 )
 
 settings = get_settings()
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(files.router, prefix=f"{settings.api_prefix}/files", tags=["Files"])
     app.include_router(api_keys.router, prefix=f"{settings.api_prefix}/api-keys", tags=["API Keys"])
     app.include_router(stats.router, prefix=f"{settings.api_prefix}/stats", tags=["Statistics"])
+    app.include_router(setup.router, prefix=f"{settings.api_prefix}/setup", tags=["Setup"])
     
     # ============================================================
     # HEALTH CHECK

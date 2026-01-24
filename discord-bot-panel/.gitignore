@@ -1,16 +1,52 @@
 # Python
 __pycache__/
 *.py[cod]
-venv/
-.env
-
-# Javascript
-node_modules/
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
 dist/
-coverage/
+downloads/
+eggs/
+.flakes/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv
+.env
+.pytest_cache/
 
-# Database
+# Node.js
+**/node_modules/
+**/dist/
+frontend/dist/
+frontend/coverage/
+.npm
+**/.env.production
+**/.env.local
+
+# Database & Local State
+data/
+ clubmate.db
 postgres_data/
+
+# pywebview / build artifacts
+gui.spec
+build_output/
+
+# IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
@@ -18,3 +54,6 @@ Thumbs.db
 
 # Storage
 storage/
+backend/uploads/*
+!backend/uploads/.gitkeep
+
