@@ -28,7 +28,7 @@ class RAGConfig:
     
     # Google API
     GOOGLE_API_KEY: Optional[str] = os.getenv("GOOGLE_API_KEY")
-    DEFAULT_LLM_MODEL: str = "gemini-2.0-flash-exp"
+    DEFAULT_LLM_MODEL: str = "gemini-2.5-flash"
     
     # RAG parameters
     TOP_K_RESULTS: int = 5
