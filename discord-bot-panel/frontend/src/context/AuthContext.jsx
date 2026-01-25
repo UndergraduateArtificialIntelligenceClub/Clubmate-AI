@@ -91,6 +91,20 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const loginAsOwner = async () => {
+        try {
+            setIsLoading(true);
+            const { data } = await axios.post('http://localhost:8000/api/auth/dev-login');
+            handleLoginSuccess(data.access_token, data.user);
+        } catch (error) {
+            console.error("Owner login failed", error);
+            setIsLoading(false);
+            if (error.response?.data?.detail) {
+                alert(error.response.data.detail);
+            }
+        }
+    };
+
     const logout = () => {
         localStorage.removeItem('token');
         delete axios.defaults.headers.common['Authorization'];
@@ -103,6 +117,7 @@ export const AuthProvider = ({ children }) => {
             user,
             isLoading,
             login,
+            loginAsOwner,
             logout,
             handleLoginSuccess,
             isAuthenticated: !!user

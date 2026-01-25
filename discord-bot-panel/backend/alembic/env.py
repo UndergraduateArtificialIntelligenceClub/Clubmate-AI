@@ -47,7 +47,8 @@ def run_migrations_offline() -> None:
     Calls to context.execute() here emit the given string to the
     script output.
     """
-    url = config.get_main_option("sqlalchemy.url")
+    from app.config import get_settings
+    url = get_settings().database_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -71,8 +72,15 @@ async def run_async_migrations() -> None:
     """
     Run migrations in 'online' mode with async engine.
     """
+    from app.config import get_settings
+    settings = get_settings()
+    
+    # Override sqlalchemy.url with the one from our settings
+    config_section = config.get_section(config.config_ini_section, {})
+    config_section["sqlalchemy.url"] = settings.database_url
+    
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        config_section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

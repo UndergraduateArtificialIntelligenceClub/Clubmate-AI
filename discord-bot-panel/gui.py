@@ -4,6 +4,8 @@ import subprocess
 import time
 import requests
 import webview
+import atexit
+import signal
 from dotenv import load_dotenv
 
 # Load env from .env file explicitly
@@ -28,6 +30,9 @@ class AppLauncher:
         self.backend_url = f"http://127.0.0.1:{self.backend_port}"
         self.frontend_url = f"http://localhost:{self.frontend_port}"
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Register cleanup to run on exit
+        atexit.register(self.cleanup)
     
     def install_dependencies(self):
         """Install Python dependencies if needed."""
@@ -55,6 +60,7 @@ class AppLauncher:
         
         try:
             # Run alembic migrations using python -m
+            # This will now use the absolute path from config.py
             result = subprocess.run(
                 [sys.executable, "-m", "alembic", "upgrade", "head"],
                 cwd=backend_dir,
@@ -77,14 +83,16 @@ class AppLauncher:
         env = os.environ.copy()
         
         # Use python -m uvicorn for better compatibility
+        # --no-access-log to keep it cleaner
         cmd = [
             sys.executable, "-m", "uvicorn",
             "app.main:app",
             "--host", "127.0.0.1",
             "--port", str(self.backend_port),
+            "--no-access-log"
         ]
         
-        # Start backend process - inherit stdout/stderr so we can see errors
+        # Start backend process
         proc = subprocess.Popen(
             cmd,
             cwd=backend_dir,
@@ -98,7 +106,6 @@ class AppLauncher:
         # Check if process died immediately
         if proc.poll() is not None:
             print(f"[LAUNCHER] ❌ Backend failed to start! Exit code: {proc.returncode}")
-            print("[LAUNCHER] Check the error output above.")
             return False
         
         # Wait for backend to be ready
@@ -150,20 +157,29 @@ class AppLauncher:
         return False
     
     def cleanup(self):
-        """Stop all child processes."""
-        print("[LAUNCHER] Stopping processes...")
+        """Stop all child processes robustly."""
+        if not self.processes:
+            return
+            
+        print("[LAUNCHER] Cleaning up processes...")
         for p in self.processes:
             try:
-                p.terminate()
-                # On Windows, terminate might not be enough for shell processes
-                if sys.platform == 'win32':
-                    subprocess.run(
-                        f"taskkill /F /T /PID {p.pid}",
-                        shell=True,
-                        capture_output=True
-                    )
+                if p.poll() is None: # Still running
+                    print(f"[LAUNCHER] Terminating process {p.pid}...")
+                    if sys.platform == 'win32':
+                        # Use taskkill to kill the whole process tree (important for shell=True)
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(p.pid)],
+                            capture_output=True,
+                            check=False
+                        )
+                    else:
+                        p.terminate()
+                        p.wait(timeout=2)
             except Exception as e:
                 print(f"[LAUNCHER] Error stopping process: {e}")
+        
+        self.processes = []
     
 class JsApi:
     """
@@ -184,51 +200,58 @@ class AppLauncherWithApi(AppLauncher):
         print("   Discord Bot Panel - Starting...")
         print("=" * 50)
         
-        # Step 1: Install dependencies
-        self.install_dependencies()
-        
-        # Step 2: Initialize database
-        self.init_database()
-        
-        # Step 3: Start backend
-        self.start_backend()
-        
-        # Step 4: Start frontend
-        self.start_frontend()
-        
-        # Step 5: Open webview window
-        print("[LAUNCHER] Opening application window...")
-        
-        # Create API instance
-        js_api = JsApi()
-        
-        window = webview.create_window(
-            "Discord Bot Panel",
-            url=self.frontend_url,
-            width=1280,
-            height=800,
-            background_color='#e0e5ec',
-            js_api=js_api
-        )
-        webview.start(
-            storage_path=os.path.join(self.root_dir, "data", "webview"),
-            private_mode=False
-        )
-        
-        # Cleanup after window closes
-        self.cleanup()
-        print("[LAUNCHER] Application closed.")
+        try:
+            # Step 1: Install dependencies
+            self.install_dependencies()
+            
+            # Step 2: Initialize database
+            self.init_database()
+            
+            # Step 3: Start backend
+            if not self.start_backend():
+                print("[LAUNCHER] Fatal: Backend failed to start.")
+                return
+            
+            # Step 4: Start frontend
+            self.start_frontend()
+            
+            # Step 5: Open webview window
+            print("[LAUNCHER] Opening application window...")
+            
+            # Create API instance
+            js_api = JsApi()
+            
+            window = webview.create_window(
+                "Discord Bot Panel",
+                url=self.frontend_url,
+                width=1280,
+                height=800,
+                background_color='#e0e5ec',
+                js_api=js_api
+            )
+            webview.start(
+                storage_path=os.path.join(self.root_dir, "data", "webview"),
+                private_mode=False
+            )
+            
+        finally:
+            # Cleanup after window closes or on error
+            self.cleanup()
+            print("[LAUNCHER] Application closed.")
 
 
 if __name__ == "__main__":
+    # Handle signals for clean exit
+    def signal_handler(sig, frame):
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     launcher = AppLauncherWithApi()
     try:
         launcher.run()
-    except KeyboardInterrupt:
-        print("\n[LAUNCHER] Interrupted by user.")
-        launcher.cleanup()
     except Exception as e:
-        print(f"[LAUNCHER] Error: {e}")
-        launcher.cleanup()
+        print(f"[LAUNCHER] Unexpected error: {e}")
         sys.exit(1)
 

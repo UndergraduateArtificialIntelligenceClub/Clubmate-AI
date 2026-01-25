@@ -25,9 +25,13 @@ class Settings(BaseSettings):
     # ============================================================
     # DATABASE CONFIGURATION
     # ============================================================
-    # SQLite connection string (default for easy development)
-    # For production, use PostgreSQL: postgresql+asyncpg://user:password@host:port/dbname
-    database_url: str = "sqlite+aiosqlite:///./data/clubmate.db"
+    # Use absolute path for SQLite to avoid "split-brain" issues
+    @property
+    def database_url(self) -> str:
+        """Construct absolute SQLite URL."""
+        db_path = Path(__file__).parent.parent / "data" / "clubmate.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite+aiosqlite:///{db_path.absolute()}"
     
     # Connection pool settings for production scalability
     db_pool_size: int = 5
@@ -49,8 +53,9 @@ class Settings(BaseSettings):
     encryption_key: str = "your-fernet-key-here"
     
     # ============================================================
-    # DISCORD OAUTH (for admin login)
+    # DISCORD CONFIGURATION
     # ============================================================
+    discord_bot_token: Optional[str] = None
     discord_client_id: Optional[str] = None
     discord_client_secret: Optional[str] = None
     discord_redirect_uri: str = "http://localhost:8000/api/auth/discord/callback"
@@ -80,8 +85,8 @@ class Settings(BaseSettings):
     # Environment: development, staging, production
     environment: str = "development"
     
-    # CORS origins (comma-separated for multiple)
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # CORS origins (allow everything for local webview)
+    cors_origins: str = "*"
     
     # API prefix
     api_prefix: str = "/api"
@@ -105,6 +110,8 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
+        if self.cors_origins == "*":
+            return ["*"]
         return [origin.strip() for origin in self.cors_origins.split(",")]
     
     @property

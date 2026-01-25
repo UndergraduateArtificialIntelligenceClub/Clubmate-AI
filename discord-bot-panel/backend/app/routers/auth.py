@@ -11,7 +11,7 @@ Endpoints:
 - GET /auth/me - Get current user info
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import OAuth2PasswordBearer
@@ -67,8 +67,13 @@ async def login_discord(
     """
     Initiate Discord OAuth flow for login.
     """
-    if not settings.discord_client_id:
-        raise HTTPException(status_code=501, detail="Discord OAuth not configured")
+    if not settings.discord_client_id or not settings.discord_client_secret:
+        # If running locally without OAuth, we can offer a "bypass" or just error
+        # In a real local app, we might check if environment is "development"
+        raise HTTPException(
+            status_code=501, 
+            detail="Discord OAuth not configured. Please provide Client ID and Secret in Settings."
+        )
         
     logout_url = "https://discord.com/api/oauth2/authorize"
     # To read/write messages, we typically need the bot to be added to the server.
@@ -173,6 +178,51 @@ async def poll_discord_login(state: str):
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """Get current logged in user."""
     return current_user
+
+# ============================================================
+# LOCAL DEV BYPASS
+# ============================================================
+@router.post("/dev-login")
+async def dev_login(
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Bypass OAuth for local development.
+    Creates a 'Developer' user and returns a token.
+    """
+    # Only allow if Client Secret is missing (indicating local mode) 
+    # OR if explicitly in development mode
+    is_local_mode = not settings.discord_client_secret
+    if settings.environment != "development" and not is_local_mode:
+        raise HTTPException(
+            status_code=403, 
+            detail="Dev login only available in development mode or when OAuth is unconfigured."
+        )
+        
+    # Check if 'Developer' user exists
+    user = await AuthService.get_user_by_discord_id(session, "developer")
+    
+    if not user:
+        # Create 'Developer' user
+        user = User(
+            discord_id="developer",
+            username="Developer",
+            email="dev@local",
+            role=2, # Admin
+            avatar_url="https://ui-avatars.com/api/?name=Developer&background=random"
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+    
+    # Generate token
+    access_token_jwt = AuthService.create_access_token(data={"sub": str(user.id)})
+    
+    return {
+        "access_token": access_token_jwt,
+        "token_type": "bearer",
+        "user": user
+    }
 
 # ============================================================
 # GOOGLE OAUTH (ACCOUNT LINKING)

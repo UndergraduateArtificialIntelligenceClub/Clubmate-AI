@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
 const Login = () => {
-  const { login } = useAuth();
+  const { login, loginAsOwner } = useAuth();
   const searchParams = new URLSearchParams(window.location.search);
   const error = searchParams.get('error');
   const navigate = useNavigate();
@@ -57,6 +57,17 @@ const Login = () => {
           <Zap className="w-5 h-5 group-hover:scale-110 transition-transform" />
           Login with Discord
         </button>
+
+        {/* Local Developer Bypass */}
+        <div className="mt-4 pt-4 border-t border-slate-700/50">
+          <button
+            onClick={loginAsOwner}
+            className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 px-4 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2 group hover:-translate-y-0.5"
+          >
+            <Bot className="w-5 h-5" />
+            Enter as Developer (Local)
+          </button>
+        </div>
 
         <p className="text-slate-500 text-xs text-center mt-6">
           By logging in, you agree to our Terms of Service and Privacy Policy.
