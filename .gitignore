@@ -1,3 +1,5 @@
 .env
 src/credentials.json
 src/token.json
+
+__pycache__/
