@@ -325,8 +325,118 @@ def reschedule_meeting(
             "error": f"Failed to reschedule meeting: {str(e)}"
         }
 
-def add_invites():
-    pass
+@mcp.tool()
+def add_invites(
+        new_attendees: List[str],
+        event_id: Optional[str] = None,
+        meeting_name: Optional[str] = None,
+        date: Optional[str] = None,
+        calendar_id: Optional[str] = 'primary',
+        send_updates: Optional[str] = 'all',
+        timezone: str = "America/Edmonton"
+        ):
+    """
+    Add new attendees to a meeting on Google Calendar. If an attendee was already on the invite list it will not invite them again.
+
+    NOTE TO MODEL:
+    - You can either provide event_id directly, OR provide meeting_name + date to find the meeting.
+    - If meeting_name and date are provided, the function will automatically find the meeting.
+
+    Args:
+        new_attendees (List[str]): List of email addresses to add
+        event_id (str): Optional - The ID of the event to update
+        meeting_name (str): Optional - Name of the meeting to find
+        date (str): Optional - Date of the meeting to find
+        calendar_id (str): Calendar ID
+        send_updates (str): Whether to send update notifications: 'all', 'externalOnly', or 'none'
+        timezone (str): Timezone for the date provided (e.g. "America/Edmonton")
+
+    Returns:
+        dict: Message about the updated meeting
+    """
+    try:
+        # If event_id not provided, try to find it using meeting_name and date
+        if not event_id:
+            if not meeting_name or not date:
+                return {
+                    "error": "Either provide event_id, or both meeting_name and date"
+                }
+
+            # Find the meeting
+            find_result = find_meeting_by_name_and_date(meeting_name, date, calendar_id, timezone=timezone)
+
+            if "error" in find_result:
+                return find_result
+
+            if find_result.get("multiple_matches"):
+                # Multiple meetings found - return them for user to choose
+                return {
+                    "error": "Multiple meetings found. Please be more specific.",
+                    "meetings": find_result["meetings"]
+                }
+
+            # Single match found
+            event_id = find_result["meeting"]["event_id"]
+            logger.info(f"Found meeting '{meeting_name}' with event_id: {event_id}")
+
+        service = get_service()
+
+        # Get the existing event
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        summary = event.get('summary', 'Untitled Event')
+        
+        # Get existing attendees
+        current_attendees = event.get('attendees', [])
+        current_emails = {a.get('email') for a in current_attendees if a.get('email')}
+        
+        duplicates = []
+        added_attendees = []
+        
+        for email in new_attendees:
+            email = email.strip()
+            if email in current_emails:
+                duplicates.append(email)
+            else:
+                current_attendees.append({'email': email})
+                added_attendees.append(email)
+        
+        if not added_attendees:
+             msg = "No new attendees were added."
+             if duplicates:
+                 msg += f" The following were already invited: {', '.join(duplicates)}."
+             return {
+                "message": msg
+            }
+
+        # Update the event
+        event['attendees'] = current_attendees
+
+        updated_event = service.events().update(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body=event,
+            sendUpdates=send_updates
+        ).execute()
+
+        link = updated_event.get('htmlLink', 'No link available')
+        
+        logger.info("Added attendees to event: %s", json.dumps(updated_event, indent=2))
+
+        message = f"Added attendees {', '.join(added_attendees)} to meeting '{summary}'."
+        if duplicates:
+            message += f" (Note: {', '.join(duplicates)} were already invited.)"
+        message += f" {link}"
+
+        return {
+            "link": link,
+            "message": message
+        }
+
+    except Exception as e:
+        logger.error("Error adding invites: %s", str(e))
+        return {
+            "error": f"Failed to add invites: {str(e)}"
+        }
 
 def find_meeting_by_name_and_date(
         meeting_name: str,
