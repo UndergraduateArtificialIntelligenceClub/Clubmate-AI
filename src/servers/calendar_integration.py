@@ -85,6 +85,7 @@ def schedule_meeting(
                     "timezone": timezone,
                 }, indent=2))
 
+    assert timezone is not None
     start_local = normalize_time(start_time, timezone)
     end_local   = normalize_time(end_time, timezone)
 
@@ -137,7 +138,8 @@ def cancel_meeting(
         meeting_name: Optional[str] = None,
         date: Optional[str] = None,
         calendar_id: Optional[str] = 'primary',
-        send_updates: Optional[str] = 'all'
+        send_updates: Optional[str] = 'all',
+        timezone: str = "America/Edmonton"
         ):
     """
     Cancel a meeting on Google Calendar.
@@ -152,6 +154,7 @@ def cancel_meeting(
         date (str): Optional - Date of the meeting
         calendar_id (str): Calendar ID
         send_updates (str): Whether to send cancellation notifications: 'all', 'externalOnly', or 'none'
+        timezone (str): Timezone for the date provided (e.g. "America/Edmonton")
 
     Returns:
         dict: A message confirming the cancellation
@@ -165,7 +168,7 @@ def cancel_meeting(
                 }
 
             # Find the meeting
-            find_result = find_meeting_by_name_and_date(meeting_name, date, calendar_id)
+            find_result = find_meeting_by_name_and_date(meeting_name, date, calendar_id, timezone=timezone)
 
             if "error" in find_result:
                 return find_result
@@ -214,7 +217,7 @@ def reschedule_meeting(
         meeting_name: Optional[str] = None,
         original_date: Optional[str] = None,
         calendar_id: Optional[str] = 'primary',
-        timezone: Optional[str] = "America/Edmonton",
+        timezone: str = "America/Edmonton",
         send_updates: Optional[str] = 'all'
         ):
     """
@@ -248,7 +251,7 @@ def reschedule_meeting(
                 }
 
             # Find the meeting
-            find_result = find_meeting_by_name_and_date(meeting_name, original_date, calendar_id)
+            find_result = find_meeting_by_name_and_date(meeting_name, original_date, calendar_id, timezone=timezone)
 
             if "error" in find_result:
                 return find_result
@@ -274,6 +277,7 @@ def reschedule_meeting(
                     }, indent=2))
 
         # Normalize times to handle timezone conversions
+        assert timezone is not None
         start_local = normalize_time(new_start_time, timezone)
         end_local = normalize_time(new_end_time, timezone)
 
@@ -327,8 +331,9 @@ def add_invites():
 def find_meeting_by_name_and_date(
         meeting_name: str,
         date: str,
-        calendar_id: Optional[str] = 'primary'
-        ):
+        calendar_id: Optional[str] = 'primary',
+        timezone: str = "America/Edmonton"
+        ) -> dict:
     """
     Internal helper function to find a meeting by its name/summary and date.
 
@@ -336,6 +341,7 @@ def find_meeting_by_name_and_date(
         meeting_name (str): The name or summary of the meeting to find (case-insensitive partial match)
         date (str): The date to search on (e.g., '2026-01-20' or '2026-01-20T00:00:00')
         calendar_id (str): Calendar ID (defaults to 'primary')
+        timezone (str): Timezone to use for the search day boundaries (defaults to 'America/Edmonton')
 
     Returns:
         dict: Meeting details including event_id, or error message
@@ -345,9 +351,27 @@ def find_meeting_by_name_and_date(
 
         # Parse the date and create time range for the entire day
         from dateutil import parser as date_parser
+        
+        # Parse input date
         search_date = date_parser.parse(date).date()
-        time_min = f"{search_date}T00:00:00Z"
-        time_max = f"{search_date}T23:59:59Z"
+        
+        # Get timezone object
+        target_tz = tz.gettz(timezone)
+        if not target_tz:
+             # fallback if invalid timezone string provided
+             target_tz = tz.gettz("America/Edmonton")
+
+        # Create datetime start/end of day in the target timezone
+        # We use the search_date at 00:00:00 and 23:59:59 in the target_tz
+        dt_start = datetime.combine(search_date, datetime.min.time()).replace(tzinfo=target_tz)
+        dt_end = datetime.combine(search_date, datetime.max.time()).replace(tzinfo=target_tz)
+
+        # Convert these to UTC strings for the API call (Google Calendar API expects UTC or offset-aware RFC3339)
+        # Note: We can send them with offsets, but converting to UTC is safer/standard for search usually.
+        # But actually, the API accepts offset-aware strings well. 
+        # Using isoformat() on offset-aware datetime works perfectly.
+        time_min = dt_start.isoformat()
+        time_max = dt_end.isoformat()
 
         # Get all events for that day
         events_result = service.events().list(
@@ -408,8 +432,91 @@ def find_meeting_by_name_and_date(
             "error": f"Failed to find meeting: {str(e)}"
         }
 
-def update_meeting_details():
-    pass
+@mcp.tool()
+def update_meeting_details(
+        new_description: str,
+        event_id: Optional[str] = None,
+        meeting_name: Optional[str] = None,
+        date: Optional[str] = None,
+        calendar_id: Optional[str] = 'primary',
+        send_updates: Optional[str] = 'all',
+        timezone: str = "America/Edmonton"
+        ) -> dict:
+    """
+    Update the description of a meeting on Google Calendar.
+
+    NOTE TO MODEL:
+    - You can either provide event_id directly, OR provide meeting_name + date to find the meeting.
+    - If meeting_name and date are provided, the function will automatically find the meeting.
+
+    Args:
+        new_description (str): New description for the meeting
+        event_id (str): Optional - The ID of the event to update
+        meeting_name (str): Optional - Name of the meeting to find
+        date (str): Optional - Date of the meeting to find
+        calendar_id (str): Calendar ID
+        send_updates (str): Whether to send update notifications: 'all', 'externalOnly', or 'none'
+        timezone (str): Timezone for the date provided (e.g. "America/Edmonton")
+
+    Returns:
+        dict: Message about the updated meeting
+    """
+    try:
+        # If event_id not provided, try to find it using meeting_name and date
+        if not event_id:
+            if not meeting_name or not date:
+                return {
+                    "error": "Either provide event_id, or both meeting_name and date"
+                }
+
+            # Find the meeting
+            find_result = find_meeting_by_name_and_date(meeting_name, date, calendar_id, timezone=timezone)
+
+            if "error" in find_result:
+                return find_result
+
+            if find_result.get("multiple_matches"):
+                # Multiple meetings found - return them for user to choose
+                return {
+                    "error": "Multiple meetings found. Please be more specific.",
+                    "meetings": find_result["meetings"]
+                }
+
+            # Single match found
+            event_id = find_result["meeting"]["event_id"]
+            logger.info(f"Found meeting '{meeting_name}' with event_id: {event_id}")
+
+        service = get_service()
+
+        # Get the existing event
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        summary = event.get('summary', 'Untitled Event')
+
+        # Update the description
+        event['description'] = new_description
+
+        # Update the event on the calendar
+        updated_event = service.events().update(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body=event,
+            sendUpdates=send_updates
+        ).execute()
+
+        link = updated_event.get('htmlLink', 'No link available')
+        
+        logger.info("Updated event description: %s", json.dumps(updated_event, indent=2))
+
+        return {
+            "link": link,
+            "message": f"Description for meeting '{summary}' has been updated successfully. {link}"
+        }
+
+    except Exception as e:
+        logger.error("Error updating meeting description: %s", str(e))
+        return {
+            "error": f"Failed to update meeting description: {str(e)}"
+        }
 
 
 def get_service():
