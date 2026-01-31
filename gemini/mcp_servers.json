@@ -26,5 +26,12 @@
     "language": "python",
     "env_vars": null,
     "description": "Example MCP server"
+  },
+  "libcal": {
+    "name": "libcal",
+    "script_path": "../src/servers/libcal_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "UAlberta Library: Check Study Room Availability"
   }
 }

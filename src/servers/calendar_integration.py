@@ -1,5 +1,6 @@
 from fastmcp import FastMCP
 from datetime import datetime
+from datetime import datetime
 import os
 from typing import List  
 
@@ -11,6 +12,8 @@ from typing import Optional, List,Union
 
 from pathlib import Path
 
+# Get the directory where credentials are stored (in project root)
+SCRIPT_DIR = Path(__file__).parent.parent.parent  # Points to project root
 # Get the directory where credentials are stored (in project root)
 SCRIPT_DIR = Path(__file__).parent.parent.parent  # Points to project root
 CREDENTIALS_PATH = SCRIPT_DIR / "credentials.json"
@@ -66,8 +69,7 @@ def schedule_meeting(
     - Provide start_time and end_time in local time whenever possible.
     - If you provide Z/UTC timestamps, they will be auto-converted.
     """
-
-    # ---- Normalize attendees ----
+    
     if attendees is None:
         attendees_list: List[str] = []
     elif isinstance(attendees, str):
@@ -229,6 +231,13 @@ def reschedule_meeting(
     - Provide new_start_time and new_end_time in local time whenever possible.
     - If you provide Z/UTC timestamps, they will be auto-converted.
 
+
+    NOTE TO MODEL:
+    - You can either provide event_id directly, OR provide meeting_name + original_date to find the meeting.
+    - If meeting_name and original_date are provided, the function will automatically find the meeting.
+    - Provide new_start_time and new_end_time in local time whenever possible.
+    - If you provide Z/UTC timestamps, they will be auto-converted.
+
     Args:
         new_start_time (str): New start time
         new_end_time (str): New end time
@@ -286,6 +295,19 @@ def reschedule_meeting(
 
         service = get_service()
 
+        # Get the existing event
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        old_summary = event.get('summary', 'Untitled Event')
+
+        # Update the event times
+        event['start'] = {
+            'dateTime': start_local,
+            'timeZone': timezone,
+        }
+        event['end'] = {
+            'dateTime': end_local,
+            'timeZone': timezone,
+        }
         # Get the existing event
         event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
         old_summary = event.get('summary', 'Untitled Event')
@@ -649,7 +671,20 @@ def get_service():
                 raise ValueError(
                     "Google Calendar credentials expired. Please run 'python src/authenticate.py' to re-authenticate."
                 )
+            try:
+                creds.refresh(Request())
+                # Save the refreshed credentials
+                with open(TOKEN_PATH, 'w') as token:
+                    token.write(creds.to_json())
+            except Exception as e:
+                logger.error(f"Failed to refresh credentials: {e}")
+                raise ValueError(
+                    "Google Calendar credentials expired. Please run 'python src/authenticate.py' to re-authenticate."
+                )
         else:
+            raise ValueError(
+                "Google Calendar not authenticated. Please run 'python src/authenticate.py' first."
+            )
             raise ValueError(
                 "Google Calendar not authenticated. Please run 'python src/authenticate.py' first."
             )
@@ -708,7 +743,7 @@ def list_upcoming_events(max_results: int = 10):
             output.append(f"{start} - {event.get('summary', '(No title)')}")
         return "\n".join(output)
     except Exception as e:
-        return f"Error listing events: {e}"
+        return f"Error listing events: {e}"   
 
 if __name__ == "__main__":
     mcp.run() 

@@ -64,7 +64,21 @@ class MCPSessionManager:
             except Exception as e:
                 logger.error(f"Failed to register calendar: {e}")
 
-            # 3. AUTO CONNECT (Optional - choose which one you want active by default)
+            # 3. REGISTER LIBCAL SERVER (Library Room Booking)
+            try:
+                servers = client.list_servers()
+                if "libcal" not in servers:
+                    client.add_server(
+                        name="libcal",
+                        script_path="../src/servers/libcal_server.py",
+                        language="python",
+                        description="UAlberta Library: Check Study Room Availability"
+                    )
+                    logger.info("Registered LibCal Server")
+            except Exception as e:
+                logger.error(f"Failed to register libcal: {e}")
+
+            # 4. AUTO CONNECT (Optional - choose which one you want active by default)
             # Currently, the client only supports one active connection at a time.
             # Let's default to 'calendar' since that's what you are working on.
             try:
