@@ -227,7 +227,7 @@ class GeminiMCPClient:
     async def chat(
         self,
         prompt: str,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         server_name: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
@@ -382,7 +382,7 @@ class GeminiMCPClient:
 
             # Send back to Gemini to get the next step (or final answer)
             response = await self.gemini_client.aio.models.generate_content(
-                model=model,
+                model="gemini-2.5-flash",
                 contents=messages,
                 config=types.GenerateContentConfig(
                     temperature=temperature,
@@ -440,7 +440,7 @@ async def main_example():
         # Chat with Gemini
         print("\nSending prompt: 'Roll 5 dice and then tell me the sum.'")
         response = await client.chat(
-            "Roll 5 dice and then tell me the sum.", model="gemini-2.0-flash"
+            "Roll 5 dice and then tell me the sum.", model="gemini-2.5-flash"
         )
         print(f"\nGemini Final Answer: {response}")
 
