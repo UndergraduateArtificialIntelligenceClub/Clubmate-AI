@@ -2,3 +2,12 @@
 **/credentials.json
 **/token.json
 **/__pycache__
+**/chroma_db
+.python-version
+.venv
+CLAUDE.md
+credentials.json
+uv.lock
+pyproject.toml
+**/pyproject.toml
+**/uv.lock

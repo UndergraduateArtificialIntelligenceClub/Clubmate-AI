@@ -1,81 +1,122 @@
 # Clubmate-AI
 
-## Setup & Installation
+AI-powered Discord bot with RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) integration.
 
-### 1. Create a Virtual Environment
-It's recommended to use a virtual environment to manage dependencies.
+## Features
+
+- 🤖 **Chat with Gemini AI** — Conversational AI with tool use
+- 📚 **RAG Knowledge Base** — Ingest documents (PDF, TXT, MD) for contextual Q&A
+- 📅 **Google Calendar** — View and manage events via MCP
+- 🔧 **Extensible MCP Servers** — Add custom tools easily
+
+## Quick Start
+
+### 1. Setup Environment
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+# Create virtual environment
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Linux/Mac
 
-### 2. Install Dependencies
-Install the required packages using `pip`.
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
+
+### 2. Configure
+
+```bash
+# Copy and edit .env
+cp .env.example .env
+# Add your DISCORD_TOKEN, GEMINI_API_KEY
+```
+
+### 3. Run
+
+```bash
+python gemini/discord_bot.py
+```
+
+---
+
+## Discord Commands
+
+### Chat & AI
+| Command | Description |
+|---------|-------------|
+| `!chat <message>` | Chat with Gemini AI |
+| `@Clubmate-AI <message>` | Mention to chat |
+| `!clear` | Clear conversation history |
+
+### RAG (Knowledge Base)
+| Command | Description |
+|---------|-------------|
+| `!ingest <path>` | Ingest documents into knowledge base |
+| `!rag-reset` | Clear all ingested documents |
+
+### MCP Servers
+| Command | Description |
+|---------|-------------|
+| `!servers` | List configured MCP servers |
+| `!connect <name>` | Connect to a server (e.g., `!connect calendar`) |
+| `!tools` | List available tools |
+
+---
+
+## RAG Testing
+
+```bash
+# Test RAG system
+python test_rag.py status         # Check status
+python test_rag.py ingest <path>  # Ingest documents
+python test_rag.py query "..."    # Query with LLM
+python test_rag.py retrieve "..." # Raw retrieval (no LLM)
+python test_rag.py reset          # Clear database
+
+# Verbose mode
+python test_rag.py status -v
+```
+
+---
 
 ## Configuration
 
 ### Google Calendar API
-1.  **Create OAuth Credentials**:
-    *   Go to the [Google Cloud Console](https://console.cloud.google.com/).
-    *   Create a new project (or select an existing one).
-    *   Enable the **Google Calendar API**.
-    *   Go to **Credentials** -> **Create Credentials** -> **OAuth client ID**.
-    *   Select **Desktop app**.
-    *   Download the JSON file. (We have our own credentials.json for ClubeMateAI. Will be in repo)
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable **Google Calendar API**
+3. Create OAuth credentials (Desktop app)
+4. Save as `credentials.json` in project root
+5. Run `python src/authenticate.py` to generate `token.json`
 
-2.  **Save Credentials**:
-    *   Rename the downloaded JSON file to `credentials.json`.
-    *   Place it in the root directory.
-
-3.  **Authenticate**:
-    Run the authentication script to generate your user token. This will open a browser window for you to log in.
-
-    ```bash
-    python src/authenticate.py
-    ```
-    
-    *   Upon successful login, a `token.json` file will be created in the root directory.
-
-### Discord Bot & Gemini
-1.  **Environment Variables**:
-    *   Copy `.env.example` to `.env`.
-    *   Fill in your `DISCORD_TOKEN` and `GEMINI_API_KEY`.
-
-    ```bash
-    cp .env.example .env
-    # Edit .env with your keys
-    ```
-
-## Running the Project
-
-### Start the MCP Server (Standalone)
-To start the Google Calendar MCP server manually (for testing via stdio):
-
-```bash
-python src/servers/calendar_integration.py
+### Environment Variables (`.env`)
+```
+DISCORD_TOKEN=your_discord_bot_token
+GEMINI_API_KEY=your_gemini_api_key
+CHROMA_DB_DIR=./ragbot/chroma_db
+EMBEDDING_MODEL=BAAI/bge-base-en-v1.5
+DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 ```
 
-### Start the Discord Bot
-The Discord bot acts as a client for the MCP server.
+---
 
-1.  Navigate to the `gemini` directory:
-    ```bash
-    cd gemini
-    ```
-2.  Run the bot:
-    ```bash
-    python discord_bot.py
-    ```
+## Project Structure
 
-The bot will automatically check for the calendar server script at `../src/servers/calendar_integration.py` and register it.
+```
+Clubmate-AI/
+├── gemini/              # Discord bot & MCP client
+│   ├── discord_bot.py   # Main bot entry point
+│   ├── gemini_mcp_client.py
+│   └── example_server.py
+├── ragbot/              # RAG module
+│   ├── rag.py           # Core RAG functionality
+│   └── config.py        # RAG configuration
+├── src/
+│   └── servers/         # MCP servers
+│       └── calendar_integration.py
+├── test_rag.py          # RAG test script
+└── .env.example         # Environment template
+```
 
-### Discord Commands
-- `!chat <message>`: Chat with the bot (it can use tools).
-- `!list_tools`: Show available tools.
-- `!connect calendar`: Connect to the calendar server (auto-connected on startup).
-- Mentioning the bot (`@Clubmate-AI <message>`) also works as a chat interface.
+---
+
+*Developed by the Undergraduate Artificial Intelligence Club*

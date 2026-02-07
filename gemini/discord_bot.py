@@ -1,15 +1,39 @@
 import os
 import asyncio
 import logging
+from pathlib import Path
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# =============================================================================
+# TODO: Add !status command - comprehensive status showing:
+#   - Bot online status, latency
+#   - Connected MCP servers (🟢/🔴)
+#   - RAG system status (documents ingested, ChromaDB size)
+#   - Available tools count
+#   - Memory usage, uptime
+# =============================================================================
+
+# =============================================================================
+# TODO: Add directory/file disambiguation for !ingest command
+#   - !ingest path       → Auto-detect file vs directory
+#   - !ingest \path      → Force directory ingestion (use backslash prefix)
+#   - !ingest path\      → Alternative: trailing slash for directory
+#   - Example: "!ingest \documents" ingests the documents folder
+# =============================================================================
+
 # Import your existing client
 from gemini_mcp_client import GeminiMCPClient
 
+# Path configuration - resolve paths relative to script location, not CWD
+GEMINI_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = GEMINI_DIR.parent
+CALENDAR_SERVER_PATH = str(PROJECT_ROOT / "src" / "servers" / "calendar_integration.py")
+EXAMPLE_SERVER_PATH = str(GEMINI_DIR / "example_server.py")
+
 # Configuration
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")  # Load .env from project root
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DEFAULT_SERVER = "example"  # The server to connect to automatically
 
@@ -43,7 +67,7 @@ class MCPSessionManager:
                 if "example" not in servers:
                     client.add_server(
                         name="example",
-                        script_path="./example_server.py",
+                        script_path=EXAMPLE_SERVER_PATH,
                         language="python",
                         description="Utilities: Dice, Math, Weather"
                     )
@@ -56,7 +80,7 @@ class MCPSessionManager:
                 if "calendar" not in servers:
                     client.add_server(
                         name="calendar",
-                        script_path="../src/servers/calendar_integration.py",
+                        script_path=CALENDAR_SERVER_PATH,
                         language="python",
                         description="Google Calendar: Schedule, Check Availability"
                     )
@@ -91,8 +115,18 @@ class MCPSessionManager:
                 except:
                     pass
                 
+            # 4. PRE-WARM RAG (downloads embedding model on first run)
+            if client.is_rag_available():
+                try:
+                    # gemini_mcp_client already added project root to sys.path
+                    from ragbot import rag_has_documents as _rag_check
+                    await asyncio.to_thread(_rag_check)
+                    logger.info("RAG system initialized")
+                except Exception as e:
+                    logger.warning(f"RAG pre-initialization failed: {e}")
+
             self.sessions[channel_id] = client
-            
+
         return self.sessions[channel_id]
     async def close_all(self):
         for client in self.sessions.values():
@@ -211,6 +245,50 @@ async def clear_history_command(ctx):
     client = await session_manager.get_or_create_session(ctx.channel.id)
     client.clear_history()
     await ctx.send("🧹 Conversation history cleared.")
+
+
+@bot.command(name="ingest")
+async def ingest_command(ctx, *, path: str):
+    """Ingest documents into the RAG knowledge base. Usage: !ingest <file_or_directory_path>"""
+    client = await session_manager.get_or_create_session(ctx.channel.id)
+
+    if not client.is_rag_available():
+        await ctx.send("RAG module is not available. Check server logs for details.")
+        return
+
+    if not Path(path).exists():
+        await ctx.send(f"Path not found: `{path}`")
+        return
+
+    async with ctx.typing():
+        try:
+            success = await client.ingest_documents(path)
+            if success:
+                await ctx.send(f"Successfully ingested: `{path}`")
+            else:
+                await ctx.send(f"Ingestion completed but no documents were processed from: `{path}`")
+        except Exception as e:
+            await ctx.send(f"Ingestion failed: {str(e)}")
+
+
+@bot.command(name="rag-reset")
+async def rag_reset_command(ctx):
+    """Clear all documents from the RAG knowledge base. Usage: !rag-reset"""
+    client = await session_manager.get_or_create_session(ctx.channel.id)
+
+    if not client.is_rag_available():
+        await ctx.send("RAG module is not available. Check server logs for details.")
+        return
+
+    async with ctx.typing():
+        try:
+            success = await client.reset_rag_db()
+            if success:
+                await ctx.send("RAG knowledge base has been cleared.")
+            else:
+                await ctx.send("Failed to reset the RAG knowledge base.")
+        except Exception as e:
+            await ctx.send(f"RAG reset failed: {str(e)}")
 
 
 # Allow chatting by just mentioning the bot

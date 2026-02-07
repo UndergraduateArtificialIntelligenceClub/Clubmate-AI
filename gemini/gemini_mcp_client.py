@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -22,6 +23,26 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# --- RAG Integration Setup ---
+# Load .env at module level so GEMINI_API_KEY is available before ragbot import
+load_dotenv()
+
+# Add project root to sys.path so ragbot package can be imported
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+try:
+    from ragbot import rag_retrieve, rag_has_documents, rag_ingest, db_reset as rag_db_reset
+    RAG_AVAILABLE = True
+    logger.info("RAG module loaded successfully")
+except ImportError:
+    RAG_AVAILABLE = False
+    logger.info("ragbot module not available; RAG features disabled")
+except ValueError as e:
+    RAG_AVAILABLE = False
+    logger.warning(f"ragbot configuration error: {e}; RAG features disabled")
 
 
 @dataclass
@@ -254,13 +275,43 @@ class GeminiMCPClient:
             for msg in self.conversation_history:
                 messages.append({"role": msg.role, "parts": [{"text": msg.content}]})
 
-            # 2. Add System Prompt so Gemini knows it can use tools
-            system_prompt = (
-                f"You are a helpful AI assistant connected to an MCP (Model Context Protocol) server named '{server}'. "
-                "You have access to the tools listed in your context. "
-                "You should use these tools whenever they help answer the user's question. "
-                "If asked, acknowledge that you are using tools from this server."
-            )
+            # 2. Build comprehensive system prompt
+            system_prompt = f"""You are Clubmate, an intelligent AI assistant with two capabilities:
+
+## Knowledge Base (RAG)
+If knowledge base context is provided below, it contains pre-retrieved information relevant to the user's question. Use this for:
+- FAQ-style questions about ingested documents
+- Static information from PDFs, text files, or documentation
+- Questions about policies, procedures, or reference material
+
+When using knowledge base context:
+- Answer directly from the provided context - DO NOT call any tools to "search" documents
+- If the context doesn't contain the answer, say so clearly
+
+## MCP Tools
+You have access to tools from the connected MCP server '{server}'. Only call tools that are explicitly listed in your tool context. Do NOT invent tool names.
+
+## Response Guidelines
+1. For knowledge-based questions → Use the provided context directly
+2. For calendar/action questions → Use MCP tools
+3. For mixed questions → Combine both approaches
+4. Be concise but comprehensive
+5. Maintain a friendly, professional tone
+"""
+
+            # 2b. Inject RAG context if available
+            rag_context = await self._retrieve_rag_context(prompt)
+            if rag_context:
+                system_prompt += f"""
+---
+## Knowledge Base Context
+The following information was retrieved from the ingested knowledge base and is directly available to you:
+
+{rag_context}
+
+NOTE: This context is already provided - you do NOT need to call any tools to access it.
+---
+"""
 
             # 3. Initial API Call
             response = await self.gemini_client.aio.models.generate_content(
@@ -405,6 +456,59 @@ class GeminiMCPClient:
         """Clear conversation history"""
         self.conversation_history.clear()
         logger.info("Conversation history cleared")
+
+    async def _retrieve_rag_context(self, query: str, top_k: int = 5) -> Optional[str]:
+        """
+        Retrieve relevant RAG context for the given query.
+
+        Returns a formatted context string, or None if RAG is unavailable
+        or the vector store has no documents.
+        """
+        if not RAG_AVAILABLE:
+            return None
+
+        try:
+            has_docs = await asyncio.to_thread(rag_has_documents)
+            if not has_docs:
+                logger.debug("RAG vector store is empty; skipping context retrieval")
+                return None
+
+            chunks = await asyncio.to_thread(rag_retrieve, query, top_k)
+
+            if not chunks:
+                return None
+
+            context_parts = []
+            for i, chunk in enumerate(chunks, 1):
+                source = chunk["source"]
+                page = chunk.get("page")
+                citation = f"[{source}, page {page}]" if page else f"[{source}]"
+                context_parts.append(f"Reference {i} {citation}:\n{chunk['content']}")
+
+            return "\n---\n".join(context_parts)
+
+        except Exception as e:
+            logger.warning(f"RAG context retrieval failed: {e}")
+            return None
+
+    @staticmethod
+    async def ingest_documents(path: str) -> bool:
+        """Ingest documents into the RAG knowledge base."""
+        if not RAG_AVAILABLE:
+            raise RuntimeError("RAG module is not available")
+        return await asyncio.to_thread(rag_ingest, path)
+
+    @staticmethod
+    async def reset_rag_db() -> bool:
+        """Reset the RAG vector database."""
+        if not RAG_AVAILABLE:
+            raise RuntimeError("RAG module is not available")
+        return await asyncio.to_thread(rag_db_reset)
+
+    @staticmethod
+    def is_rag_available() -> bool:
+        """Check if RAG functionality is available."""
+        return RAG_AVAILABLE
 
     async def close(self):
         """Close all connections"""
