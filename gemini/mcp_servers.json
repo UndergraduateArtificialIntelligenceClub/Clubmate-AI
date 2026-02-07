@@ -1,0 +1,30 @@
+{
+  "example": {
+    "name": "example",
+    "script_path": "./example_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "Utilities: Dice, Math, Weather"
+  },
+  "calendar": {
+    "name": "calendar",
+    "script_path": "../src/servers/calendar_integration.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "First server"
+  },
+  "google-calendar": {
+    "name": "google-calendar",
+    "script_path": "../src/servers/calendar_integration.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "Google Calendar integration for scheduling meetings and checking availability"
+  },
+  "example-server": {
+    "name": "example-server",
+    "script_path": "./example_server.py",
+    "language": "python",
+    "env_vars": null,
+    "description": "Example MCP server"
+  }
+}
