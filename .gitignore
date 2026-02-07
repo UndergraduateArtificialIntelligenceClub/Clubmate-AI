@@ -9,3 +9,5 @@ CLAUDE.md
 credentials.json
 uv.lock
 pyproject.toml
+**/pyproject.toml
+**/uv.lock
