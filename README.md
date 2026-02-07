@@ -93,7 +93,7 @@ python test_rag.py status -v
 DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_gemini_api_key
 CHROMA_DB_DIR=./ragbot/chroma_db
-SENTENCE_TRANSFORMER_MODEL=BAAI/bge-base-en-v1.5
+EMBEDDING_MODEL=BAAI/bge-base-en-v1.5
 DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
 ```
 

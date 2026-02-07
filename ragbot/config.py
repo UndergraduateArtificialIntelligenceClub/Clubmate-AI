@@ -32,7 +32,7 @@ class RAGConfig:
     CHROMA_COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION_NAME", "rag-documents")
     
     # Embedding settings
-    EMBEDDING_MODEL: str = os.getenv("SENTENCE_TRANSFORMER_MODEL", "BAAI/bge-base-en-v1.5")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
     EMBEDDING_DIMENSION: int = 768  # for BAAI/bge-base-en-v1.5
     
     # Gemini API
