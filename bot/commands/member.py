@@ -30,6 +30,13 @@ async def _chat_with_timeout(client, prompt: str) -> str:
         return "⏱️ The request timed out. The bot may be busy — please try again in a moment."
     except Exception as e:
         logger.error("Chat error: %s", e)
+        err_text = str(e)
+        if "API key was reported as leaked" in err_text or "PERMISSION_DENIED" in err_text:
+            return (
+                "❌ Gemini API key is invalid/revoked.\n"
+                "Update `GEMINI_API_KEY` in Dashboard → Settings → API Keys, "
+                "then restart the bot."
+            )
         return f"❌ Something went wrong: {e}"
 
 

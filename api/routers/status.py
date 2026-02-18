@@ -3,6 +3,7 @@ Status endpoints — bot health, connected servers, RAG doc count.
 """
 
 import sys
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -17,18 +18,14 @@ router = APIRouter(prefix="/status", tags=["status"])
 @router.get("")
 async def get_status(_user: dict = Depends(verify_discord_admin)):
     """Return health status of all components."""
-    from ragbot import rag_has_documents
+    from ragbot import rag_has_documents, rag_chunk_count
 
     rag_status = "unavailable"
     doc_count = 0
     try:
-        has_docs = rag_has_documents()
+        has_docs = await asyncio.to_thread(rag_has_documents)
         rag_status = "ready"
-        if has_docs:
-            # Get rough count from ChromaDB
-            from ragbot.rag import _get_rag
-            rag = _get_rag()
-            doc_count = rag.vector_store._collection.count()
+        doc_count = await asyncio.to_thread(rag_chunk_count) if has_docs else 0
     except Exception:
         pass
 

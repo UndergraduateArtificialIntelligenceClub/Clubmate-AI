@@ -11,3 +11,6 @@ uv.lock
 pyproject.toml
 **/pyproject.toml
 **/uv.lock
+# Local runtime auth/token artifacts
+data/google_token.json
+data/google_credentials.json

@@ -13,7 +13,7 @@ Source ingestion helpers:
     ingest_uploaded_file(...)  — Ingest raw file bytes from API upload
 """
 
-from .rag import rag_ingest, rag_query, db_reset, rag_retrieve, rag_has_documents
+from .rag import rag_ingest, rag_query, db_reset, rag_retrieve, rag_has_documents, rag_chunk_count
 from .sources.google_docs import ingest_google_doc
 from .sources.file_upload import ingest_uploaded_file
 
@@ -23,6 +23,7 @@ __all__ = [
     "db_reset",
     "rag_retrieve",
     "rag_has_documents",
+    "rag_chunk_count",
     "ingest_google_doc",
     "ingest_uploaded_file",
 ]

@@ -29,6 +29,22 @@ SCOPES = [
 ]
 
 
+def _oauth_redirect_uri(request: Request | None) -> str:
+    """
+    Build a callback URI that matches the externally reachable API host.
+    Falls back to localhost when API_HOST is 0.0.0.0/::.
+    """
+    if request is not None:
+        # Prefer the host/scheme seen by the incoming request.
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/google/callback"
+
+    host = settings.api_host.strip()
+    if host in {"", "0.0.0.0", "::"}:
+        host = "localhost"
+    return f"http://{host}:{settings.api_port}/google/callback"
+
+
 class CredentialsUpload(BaseModel):
     credentials_json: str  # Raw JSON string from Google Cloud Console OAuth client
 
@@ -99,7 +115,7 @@ async def start_oauth(_user: dict = Depends(verify_discord_admin), request: Requ
     flow = Flow.from_client_secrets_file(
         str(creds_path),
         scopes=SCOPES,
-        redirect_uri=f"http://{settings.api_host}:{settings.api_port}/google/callback",
+        redirect_uri=_oauth_redirect_uri(request),
     )
     auth_url, _ = flow.authorization_url(access_type="offline", include_granted_scopes="true")
 
@@ -121,7 +137,7 @@ async def oauth_callback(code: str, request: Request):
     flow = Flow.from_client_secrets_file(
         str(creds_path),
         scopes=SCOPES,
-        redirect_uri=f"http://{settings.api_host}:{settings.api_port}/google/callback",
+        redirect_uri=_oauth_redirect_uri(request),
     )
     flow.fetch_token(code=code)
 

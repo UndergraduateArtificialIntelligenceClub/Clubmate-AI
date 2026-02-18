@@ -32,6 +32,8 @@ def _read_elements(elements) -> str:
             for row in el["table"].get("tableRows", []):
                 for cell in row.get("tableCells", []):
                     text += _read_elements(cell.get("content", []))
+        elif "tableOfContents" in el:
+            text += _read_elements(el["tableOfContents"].get("content", []))
     return text
 
 
@@ -46,8 +48,29 @@ def fetch_google_doc_text(url_or_id: str) -> tuple[str, str]:
     service = get_service("docs", "v1")
     doc = service.documents().get(documentId=doc_id).execute()
     title = doc.get("title", "Untitled")
-    text = _read_elements(doc.get("body", {}).get("content", []))
-    return title, text.strip()
+    body_text = _read_elements(doc.get("body", {}).get("content", []))
+
+    # Some docs keep meaningful content in headers/footers/footnotes.
+    extra_parts = []
+    for header in doc.get("headers", {}).values():
+        extra_parts.append(_read_elements(header.get("content", [])))
+    for footer in doc.get("footers", {}).values():
+        extra_parts.append(_read_elements(footer.get("content", [])))
+    for footnote in doc.get("footnotes", {}).values():
+        extra_parts.append(_read_elements(footnote.get("content", [])))
+
+    text = "\n".join(part.strip() for part in [body_text, *extra_parts] if part and part.strip())
+
+    # Fallback path for edge-case docs where the structured body is sparse.
+    if not text:
+        try:
+            drive = get_service("drive", "v3")
+            exported = drive.files().export(fileId=doc_id, mimeType="text/plain").execute()
+            text = exported.decode("utf-8", errors="ignore").strip()
+        except Exception as e:
+            logger.warning("Drive text export fallback failed for doc %s: %s", doc_id, e)
+
+    return title, text
 
 
 def ingest_google_doc(url_or_id: str) -> bool:
@@ -77,4 +100,5 @@ def ingest_google_doc(url_or_id: str) -> bool:
 
     except Exception as e:
         logger.error("Failed to ingest Google Doc %s: %s", url_or_id, e)
-        return False
+        # Propagate the root cause so API/UI can show an actionable message.
+        raise RuntimeError(str(e))

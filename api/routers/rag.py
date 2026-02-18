@@ -3,6 +3,7 @@ RAG management endpoints — ingest docs, reset DB, check status.
 """
 
 import sys
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -22,12 +23,10 @@ class GoogleDocIngest(BaseModel):
 async def rag_status(_user: dict = Depends(verify_discord_admin)):
     """Check RAG status and document count."""
     try:
-        from ragbot import rag_has_documents
-        from ragbot.rag import _get_rag
+        from ragbot import rag_has_documents, rag_chunk_count
 
-        has_docs = rag_has_documents()
-        rag = _get_rag()
-        count = rag.vector_store._collection.count()
+        has_docs = await asyncio.to_thread(rag_has_documents)
+        count = await asyncio.to_thread(rag_chunk_count)
         return {"status": "ready", "has_documents": has_docs, "chunk_count": count}
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -45,7 +44,7 @@ async def ingest_file(
     content = await file.read()
 
     try:
-        success = ingest_uploaded_file(filename, content)
+        success = await asyncio.to_thread(ingest_uploaded_file, filename, content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -66,12 +65,29 @@ async def ingest_google_doc(
     from ragbot.sources.google_docs import ingest_google_doc as _ingest
 
     try:
-        success = _ingest(body.url)
+        success = await asyncio.to_thread(_ingest, body.url)
     except Exception as e:
+        message = str(e)
+        known_user_errors = (
+            "not connected",
+            "permission",
+            "forbidden",
+            "not found",
+            "insufficient",
+            "invalid",
+        )
+        if any(k in message.lower() for k in known_user_errors):
+            raise HTTPException(status_code=400, detail=message)
         raise HTTPException(status_code=500, detail=f"Failed to ingest Google Doc: {e}")
 
     if not success:
-        raise HTTPException(status_code=422, detail="Google Doc was fetched but no content was extracted")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Google Doc could not be ingested. "
+                "The document may be empty, access-restricted, or too short for semantic chunking."
+            ),
+        )
 
     return {"message": "Google Doc ingested successfully into the knowledge base."}
 

@@ -146,15 +146,29 @@ class RAGSystem:
             # Chunks created
             
             if not chunks:
-                logger.warning("No chunks created, skipping")
-                return False
+                # Semantic chunking can return zero chunks for very short/simple docs.
+                # Fall back to using the loaded documents directly so ingestion still works.
+                logger.warning("Semantic chunker returned no chunks; falling back to raw document chunks")
+                chunks = [doc for doc in documents if doc.page_content and doc.page_content.strip()]
+                if not chunks:
+                    logger.warning("No usable text content found, skipping")
+                    return False
             
             # Add to vector store
-            texts = [chunk.page_content for chunk in chunks]
-            metadatas = [chunk.metadata for chunk in chunks]
+            pairs = [
+                (chunk.page_content, chunk.metadata)
+                for chunk in chunks
+                if chunk.page_content and chunk.page_content.strip()
+            ]
+            if not pairs:
+                logger.warning("All chunks were empty after filtering, skipping")
+                return False
+
+            texts = [text for text, _ in pairs]
+            metadatas = [metadata for _, metadata in pairs]
             self.vector_store.add_texts(texts=texts, metadatas=metadatas)
             
-            logger.info(f"✅ Ingested {Path(file_path).name} ({len(chunks)} chunks)")
+            logger.info(f"✅ Ingested {Path(file_path).name} ({len(texts)} chunks)")
             return True
             
         except Exception as e:
@@ -520,9 +534,40 @@ def rag_retrieve(
 def rag_has_documents() -> bool:
     """Check if the RAG vector store has any ingested documents."""
     try:
-        rag = _get_rag()
-        collection = rag.vector_store._collection
+        # Fast-path check that avoids loading embedding models on first /ask
+        # when the knowledge base is empty.
+        chroma_path = Path(RAGConfig.CHROMA_DB_DIR)
+        sqlite_path = chroma_path / "chroma.sqlite3"
+        if not sqlite_path.exists():
+            return False
+
+        import chromadb
+
+        client = chromadb.PersistentClient(path=RAGConfig.CHROMA_DB_DIR)
+        try:
+            collection = client.get_collection(name=RAGConfig.CHROMA_COLLECTION_NAME)
+        except Exception:
+            return False
         return collection.count() > 0
     except Exception:
         return False
 
+
+def rag_chunk_count() -> int:
+    """Fast chunk count without initializing embedding models."""
+    try:
+        chroma_path = Path(RAGConfig.CHROMA_DB_DIR)
+        sqlite_path = chroma_path / "chroma.sqlite3"
+        if not sqlite_path.exists():
+            return 0
+
+        import chromadb
+
+        client = chromadb.PersistentClient(path=RAGConfig.CHROMA_DB_DIR)
+        try:
+            collection = client.get_collection(name=RAGConfig.CHROMA_COLLECTION_NAME)
+        except Exception:
+            return 0
+        return collection.count()
+    except Exception:
+        return 0
