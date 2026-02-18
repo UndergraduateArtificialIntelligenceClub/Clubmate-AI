@@ -1,23 +1,28 @@
 """
-RAG API - Simple interface for document ingestion and querying.
+Clubmate AI — RAG module public API.
 
-This module provides a clean API for using the RAG system in other applications.
+Core functions:
+    rag_ingest(path)           — Ingest a local file or directory
+    rag_query(query)           — Query with LLM-generated answer
+    rag_retrieve(query)        — Raw chunk retrieval (no LLM)
+    rag_has_documents()        — Check if vector store has content
+    db_reset()                 — Clear all documents
 
-Example:
-    from rag_api import rag_ingest, rag_query, db_reset
-    
-    # Ingest documents
-    success = rag_ingest("path/to/documents")
-    
-    # Query
-    result = rag_query("What is this about?")
-    print(result["generation"])
-    
-    # Reset database (clear all documents)
-    db_reset()
+Source ingestion helpers:
+    ingest_google_doc(url)     — Fetch a Google Doc and ingest
+    ingest_uploaded_file(...)  — Ingest raw file bytes from API upload
 """
 
 from .rag import rag_ingest, rag_query, db_reset, rag_retrieve, rag_has_documents
+from .sources.google_docs import ingest_google_doc
+from .sources.file_upload import ingest_uploaded_file
 
-__all__ = ["rag_ingest", "rag_query", "db_reset", "rag_retrieve", "rag_has_documents"]
-__version__ = "1.0.0"
+__all__ = [
+    "rag_ingest",
+    "rag_query",
+    "db_reset",
+    "rag_retrieve",
+    "rag_has_documents",
+    "ingest_google_doc",
+    "ingest_uploaded_file",
+]

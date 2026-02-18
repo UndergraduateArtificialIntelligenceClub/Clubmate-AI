@@ -1,0 +1,12 @@
+.git
+.env
+.venv
+__pycache__
+*.pyc
+*.pyo
+data/
+frontend/
+test_docs/
+*.md
+!README.md
+.DS_Store

@@ -1,49 +1,55 @@
 """
-RAG API - Core functionality for document ingestion and querying.
-
-This module provides standalone RAG functionality without depending on the src/ directory.
+RAG system — core functionality for document ingestion and querying.
+Config is read from config/settings.py (shared with bot and API).
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional, List
 
-# Configure logging - suppress noisy external libraries
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s'  # Clean, condensed format
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from config import settings
 
 # Suppress noisy external library logs
-for _lib in ['httpx', 'httpcore', 'urllib3', 'filelock', 'chromadb', 
+for _lib in ['httpx', 'httpcore', 'urllib3', 'filelock', 'chromadb',
              'chromadb.telemetry', 'chromadb.config', 'sentence_transformers',
              'langchain_community', 'langchain_core', 'huggingface_hub']:
     logging.getLogger(_lib).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-# LangChain imports - using v0.2+ patterns
 from langchain_chroma import Chroma
 from langchain_core.documents import Document as LCDocument
 from langchain_core.prompts import PromptTemplate
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
-
-# Document loaders
 from langchain_community.document_loaders import TextLoader
 
-# ChromaDB (through LangChain)
-# Note: Chroma handles client creation internally
-
-# Local config
-from .config import RAGConfig
-
-# PDF loading
 try:
     from langchain_community.document_loaders import PyMuPDFLoader
 except ImportError:
     PyMuPDFLoader = None
+
+
+# Thin shim so existing code that references RAGConfig still works
+class RAGConfig:
+    CHROMA_DB_DIR = settings.chroma_db_dir
+    CHROMA_COLLECTION_NAME = settings.chroma_collection_name
+    EMBEDDING_MODEL = settings.embedding_model
+    GEMINI_API_KEY = settings.gemini_api_key
+    DEFAULT_LLM_MODEL = settings.default_llm_model
+    TOP_K_RESULTS = settings.top_k_results
+    TEMPERATURE = settings.temperature
+    CHUNK_THRESHOLD_TYPE = settings.chunk_threshold_type
+    CHUNK_THRESHOLD_AMOUNT = settings.chunk_threshold_amount
+
+    @classmethod
+    def validate(cls):
+        if not cls.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not set")
+        Path(cls.CHROMA_DB_DIR).mkdir(parents=True, exist_ok=True)
 
 
 def create_embeddings(model_name: str) -> HuggingFaceEmbeddings:

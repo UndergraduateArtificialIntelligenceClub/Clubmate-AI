@@ -1,0 +1,46 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m bot.main
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env  # mount so dashboard writes persist to host
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env  # mount so dashboard writes persist to host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file: ./frontend/.env.local
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes: {}
