@@ -3,7 +3,6 @@ Google Calendar MCP Server for Clubmate AI.
 Provides tools for scheduling, cancelling, rescheduling meetings and managing invites.
 """
 
-import json
 import logging
 import sys
 from datetime import datetime
@@ -33,6 +32,15 @@ def _normalize_time(t: str, timezone: str) -> str:
     return dt.replace(microsecond=0).isoformat()
 
 
+def _day_bounds(date: str, timezone: str):
+    """Return (date_obj, day_start_iso, day_end_iso) in the requested timezone."""
+    target_tz = tz.gettz(timezone) or tz.gettz(DEFAULT_TIMEZONE)
+    search_date = parser.parse(date).date()
+    dt_start = datetime.combine(search_date, datetime.min.time()).replace(tzinfo=target_tz)
+    dt_end = datetime.combine(search_date, datetime.max.time()).replace(tzinfo=target_tz)
+    return search_date, dt_start.isoformat(), dt_end.isoformat()
+
+
 def _find_meeting(
     meeting_name: str,
     date: str,
@@ -45,18 +53,14 @@ def _find_meeting(
     """
     try:
         service = get_service("calendar", "v3")
-        target_tz = tz.gettz(timezone) or tz.gettz(DEFAULT_TIMEZONE)
-        search_date = parser.parse(date).date()
-
-        dt_start = datetime.combine(search_date, datetime.min.time()).replace(tzinfo=target_tz)
-        dt_end = datetime.combine(search_date, datetime.max.time()).replace(tzinfo=target_tz)
+        search_date, day_start, day_end = _day_bounds(date, timezone)
 
         events_result = (
             service.events()
             .list(
                 calendarId=calendar_id,
-                timeMin=dt_start.isoformat(),
-                timeMax=dt_end.isoformat(),
+                timeMin=day_start,
+                timeMax=day_end,
                 singleEvents=True,
                 orderBy="startTime",
             )
@@ -92,6 +96,69 @@ def _find_meeting(
 
     except Exception as e:
         return {"error": f"Failed to find meeting: {e}"}
+
+
+@mcp.tool()
+def list_events_on_date(
+    date: str,
+    calendar_id: str = "primary",
+    timezone: str = DEFAULT_TIMEZONE,
+) -> dict:
+    """
+    List all events scheduled on a specific date.
+
+    Args:
+        date: Date to query (e.g. '2026-02-19')
+        calendar_id: Calendar ID (default: 'primary')
+        timezone: Timezone for date boundaries
+    """
+    service = get_service("calendar", "v3")
+    search_date, day_start, day_end = _day_bounds(date, timezone)
+
+    result = (
+        service.events()
+        .list(
+            calendarId=calendar_id,
+            timeMin=day_start,
+            timeMax=day_end,
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+    )
+
+    events = result.get("items", [])
+    formatted = []
+    for e in events:
+        attendees = [a.get("email") for a in e.get("attendees", []) if a.get("email")]
+        formatted.append(
+            {
+                "event_id": e.get("id"),
+                "summary": e.get("summary", "No Title"),
+                "start": e.get("start", {}).get("dateTime", e.get("start", {}).get("date")),
+                "end": e.get("end", {}).get("dateTime", e.get("end", {}).get("date")),
+                "attendees": attendees,
+                "location": e.get("location", ""),
+                "link": e.get("htmlLink", ""),
+            }
+        )
+
+    if not formatted:
+        return {
+            "date": str(search_date),
+            "timezone": timezone,
+            "total_events": 0,
+            "events": [],
+            "message": f"No events scheduled on {search_date}.",
+        }
+
+    return {
+        "date": str(search_date),
+        "timezone": timezone,
+        "total_events": len(formatted),
+        "events": formatted,
+        "message": f"Found {len(formatted)} event(s) on {search_date}.",
+    }
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────

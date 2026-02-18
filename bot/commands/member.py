@@ -13,6 +13,7 @@ from discord.ext import commands
 logger = logging.getLogger(__name__)
 
 CHAT_TIMEOUT = 120  # seconds — give enough time for RAG + Gemini + MCP on first run
+CALENDAR_TIMEOUT = 60
 
 
 async def _wait_for_prewarm(bot):
@@ -44,6 +45,24 @@ def _split(text: str, limit: int = 1900) -> list[str]:
     return [text[i : i + limit] for i in range(0, len(text), limit)]
 
 
+def _format_day_events(result: dict) -> str:
+    if "error" in result:
+        return f"❌ {result['error']}"
+    events = result.get("events") or []
+    if not events:
+        return result.get("message", "No events found for that day.")
+
+    lines = [f"**Schedule for {result.get('date')}** ({result.get('timezone')})"]
+    for event in events:
+        start = event.get("start", "Unknown start")
+        end = event.get("end", "Unknown end")
+        title = event.get("summary", "No Title")
+        attendees = event.get("attendees") or []
+        attendee_count = f" | 👥 {len(attendees)} attendee(s)" if attendees else ""
+        lines.append(f"- `{start} → {end}` — **{title}**{attendee_count}")
+    return "\n".join(lines)
+
+
 class MemberCog(commands.Cog):
     def __init__(self, bot: commands.Bot, session_manager):
         self.bot = bot
@@ -61,13 +80,35 @@ class MemberCog(commands.Cog):
         for chunk in rest:
             await interaction.followup.send(chunk)
 
-    @app_commands.command(name="events", description="List upcoming club events from Google Calendar")
-    async def events(self, interaction: discord.Interaction):
+    @app_commands.command(name="events", description="List upcoming events or events on a specific date")
+    @app_commands.describe(date="Optional date in YYYY-MM-DD format")
+    async def events(self, interaction: discord.Interaction, date: str = ""):
         await interaction.response.defer(thinking=True)
         await _wait_for_prewarm(self.bot)
-        client = await self.sessions.get(interaction.channel_id)
-        response = await _chat_with_timeout(client, "List the next 10 upcoming events on our club calendar.")
-        await interaction.followup.send(response)
+        try:
+            if date.strip():
+                from mcp_servers.google_calendar import list_events_on_date
+
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(list_events_on_date, date.strip()),
+                    timeout=CALENDAR_TIMEOUT,
+                )
+                response = _format_day_events(result)
+            else:
+                from mcp_servers.google_calendar import list_upcoming_events
+
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(list_upcoming_events, 10),
+                    timeout=CALENDAR_TIMEOUT,
+                )
+
+            for chunk in _split(response):
+                await interaction.followup.send(chunk)
+        except asyncio.TimeoutError:
+            await interaction.followup.send("⏱️ Calendar lookup timed out. Please try again.")
+        except Exception as e:
+            logger.error("Events lookup failed: %s", e)
+            await interaction.followup.send(f"❌ Could not fetch events: {e}")
 
     @app_commands.command(name="rooms", description="Check UAlberta library study room availability")
     @app_commands.describe(
@@ -136,7 +177,7 @@ class MemberCog(commands.Cog):
             name="Member Commands",
             value=(
                 "`/ask` — Ask a question\n"
-                "`/events` — Upcoming club events\n"
+                "`/events` — Upcoming events (or pass a date)\n"
                 "`/rooms` — Library room availability\n"
                 "`/clear` — Clear chat history\n"
                 "`/help` — This message"
@@ -152,6 +193,10 @@ class MemberCog(commands.Cog):
                     "`/cancel-meeting` — Cancel a meeting\n"
                     "`/reschedule` — Reschedule a meeting\n"
                     "`/invite` — Add attendees to a meeting\n"
+                    "`/day-schedule` — Show meetings on a specific date\n"
+                    "`/cancel-day` — Cancel a meeting by date + name\n"
+                    "`/reschedule-day` — Reschedule by date + name\n"
+                    "`/invite-day` — Invite attendees by date + name\n"
                     "`/create-doc` — Create a Google Doc\n"
                     "`/create-form` — Create a Google Form\n"
                     "`/form-responses` — View form responses\n"

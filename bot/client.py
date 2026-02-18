@@ -102,16 +102,17 @@ class GeminiMCPClient:
     def clear_history(self):
         self.history.clear()
 
-    async def chat(self, prompt: str) -> str:
+    async def chat(self, prompt: str, include_rag: bool = True) -> str:
         """
         Send a user message. Runs the Gemini + MCP tool loop until a text response is produced.
         RAG context is automatically injected into the system prompt when documents are available.
         """
         # Build system prompt with optional RAG context
         system = SYSTEM_PROMPT
-        rag_context = await self._rag_context(prompt)
-        if rag_context:
-            system += f"\n---\n## Knowledge Base Context\n{rag_context}\n---\n"
+        if include_rag:
+            rag_context = await self._rag_context(prompt)
+            if rag_context:
+                system += f"\n---\n## Knowledge Base Context\n{rag_context}\n---\n"
 
         # Collect all active sessions as tool sources
         active_sessions = list(self.sessions.values())

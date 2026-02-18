@@ -100,6 +100,14 @@ class RAGSystem:
         
         logger.info("✅ RAG system ready")
         self._initialized = True
+
+    def _reopen_vector_store(self):
+        """Recreate the Chroma handle (used for recovery from stale/corrupt readers)."""
+        self.vector_store = Chroma(
+            collection_name=RAGConfig.CHROMA_COLLECTION_NAME,
+            embedding_function=self.embeddings,
+            persist_directory=RAGConfig.CHROMA_DB_DIR,
+        )
     
     def load_document(self, file_path: str) -> List[LCDocument]:
         """Load a single document file."""
@@ -514,10 +522,33 @@ def rag_retrieve(
     rag = _get_rag()
     k = top_k if top_k is not None else RAGConfig.TOP_K_RESULTS
 
-    results = rag.vector_store.similarity_search_with_score(
-        query=query,
-        k=k
-    )
+    try:
+        results = rag.vector_store.similarity_search_with_score(
+            query=query,
+            k=k
+        )
+    except Exception as e:
+        msg = str(e).lower()
+        recoverable = (
+            "hnsw segment reader" in msg
+            or "nothing found on disk" in msg
+        )
+        if not recoverable:
+            raise
+
+        logger.warning(
+            "Chroma reader error during retrieval; reopening vector store and retrying once: %s",
+            e,
+        )
+        rag._reopen_vector_store()
+        try:
+            results = rag.vector_store.similarity_search_with_score(
+                query=query,
+                k=k
+            )
+        except Exception as retry_err:
+            logger.error("RAG retrieval retry failed after reopening vector store: %s", retry_err)
+            return []
 
     chunks = []
     for doc, score in results:
