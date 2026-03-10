@@ -34,6 +34,10 @@ def _oauth_redirect_uri(request: Request | None) -> str:
     Build a callback URI that matches the externally reachable API host.
     Falls back to localhost when API_HOST is 0.0.0.0/::.
     """
+    if settings.api_external_base_url.strip():
+        base = settings.api_external_base_url.strip().rstrip("/")
+        return f"{base}/google/callback"
+
     if request is not None:
         # Prefer the host/scheme seen by the incoming request.
         base = str(request.base_url).rstrip("/")
