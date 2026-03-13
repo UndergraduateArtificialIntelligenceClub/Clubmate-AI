@@ -1,122 +1,180 @@
-# Clubmate-AI
+# Clubmate AI
 
-AI-powered Discord bot with RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol) integration.
+Clubmate AI is a Discord bot + dashboard for student clubs.
 
-## Features
+It provides:
+- Discord slash-command assistant powered by Gemini
+- Google Calendar / Docs / Sheets / Forms actions via MCP tools
+- RAG knowledge base (file + Google Doc ingestion)
+- Meeting voice recording, transcription, and summary posting
+- Web dashboard for admin configuration and Google connection
 
-- 🤖 **Chat with Gemini AI** — Conversational AI with tool use
-- 📚 **RAG Knowledge Base** — Ingest documents (PDF, TXT, MD) for contextual Q&A
-- 📅 **Google Calendar** — View and manage events via MCP
-- 🔧 **Extensible MCP Servers** — Add custom tools easily
+## Architecture
 
-## Quick Start
+This repo runs 3 services:
+- `bot`: Discord bot (`python -m bot.main`)
+- `api`: FastAPI backend (`http://localhost:8000`)
+- `frontend`: Next.js dashboard (`http://localhost:3000`)
 
-### 1. Setup Environment
+The recommended way to run is Docker Compose.
+
+## Prerequisites
+
+Install:
+- Docker Desktop + Docker Compose
+- A Discord application + bot token
+- A Gemini API key
+- A Google Cloud project (for Calendar/Docs/Sheets/Forms OAuth)
+
+## 1. Clone and Configure Environment
+
+From project root:
 
 ```bash
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Configure
-
-```bash
-# Copy and edit .env
 cp .env.example .env
-# Add your DISCORD_TOKEN, GEMINI_API_KEY
+cp frontend/.env.local.example frontend/.env.local
 ```
 
-### 3. Run
+Set values in `.env`:
+- `DISCORD_TOKEN`
+- `DISCORD_CLIENT_ID`
+- `DISCORD_CLIENT_SECRET`
+- `DISCORD_GUILD_ID`
+- `GEMINI_API_KEY`
+- `API_SECRET_KEY` (generate a strong random value)
+
+Optional but recommended:
+- `EXEC_ROLE_NAME` (default `Executive`)
+- `MEETING_SUMMARY_CHANNEL_ID`
+- `WHISPER_MODE` (`local` or `api`)
+- `OPENAI_API_KEY` (only if `WHISPER_MODE=api`)
+
+Set values in `frontend/.env.local`:
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL=http://localhost:3000`
+- `DISCORD_CLIENT_ID` (same as root `.env`)
+- `DISCORD_CLIENT_SECRET` (same as root `.env`)
+- `NEXT_PUBLIC_API_URL=http://localhost:8000`
+
+## 2. Discord OAuth Setup
+
+In Discord Developer Portal:
+
+1. Open your application.
+2. Add OAuth redirect URI:
+   - `http://localhost:3000/api/auth/callback/discord`
+3. Enable required bot permissions in your server.
+4. Invite the bot to the target server (`DISCORD_GUILD_ID`).
+
+## 3. Google Cloud OAuth Setup
+
+In Google Cloud Console for the same project:
+
+1. Enable APIs:
+   - Google Calendar API
+   - Google Docs API
+   - Google Sheets API
+   - Google Forms API
+   - Google Drive API
+2. Configure OAuth consent screen:
+   - User type: External (or Internal for Workspace)
+   - Publishing status: Testing is fine for development
+   - Add your account as a Test User
+3. Create OAuth Client ID:
+   - Application type: Web application
+   - Authorized redirect URI:
+     - `http://localhost:8000/google/callback`
+   - Authorized JavaScript origins: optional for this backend callback flow
+4. Use the dashboard Google page to upload credentials JSON and complete auth.
+
+## 4. Start the Stack
 
 ```bash
-python gemini/discord_bot.py
+docker compose up -d --build
 ```
 
----
+Check health:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Open dashboard:
+- `http://localhost:3000`
+
+## 5. First-Time Dashboard Flow
+
+1. Sign in with Discord (must have Manage Server/Admin in target guild).
+2. Go to Settings and verify API keys/config.
+3. Go to Google page:
+   - Upload OAuth credentials JSON
+   - Click connect and finish OAuth
+4. Go to Knowledge Base:
+   - Upload files or sync Google Doc
 
 ## Discord Commands
 
-### Chat & AI
-| Command | Description |
-|---------|-------------|
-| `!chat <message>` | Chat with Gemini AI |
-| `@Clubmate-AI <message>` | Mention to chat |
-| `!clear` | Clear conversation history |
+### Member commands
+- `/ask`
+- `/events` (today by default, or pass date)
+- `/rooms`
+- `/clear`
+- `/help`
 
-### RAG (Knowledge Base)
-| Command | Description |
-|---------|-------------|
-| `!ingest <path>` | Ingest documents into knowledge base |
-| `!rag-reset` | Clear all ingested documents |
+### Exec commands
+- `/schedule`, `/cancel-meeting`, `/reschedule`, `/invite`
+- `/day-schedule`, `/cancel-day`, `/reschedule-day`, `/invite-day`
+- `/create-doc`, `/create-form`, `/form-responses`, `/read-sheet`
+- `/ingest`, `/kb-reset`
+- `/meeting start`, `/meeting end`
 
-### MCP Servers
-| Command | Description |
-|---------|-------------|
-| `!servers` | List configured MCP servers |
-| `!connect <name>` | Connect to a server (e.g., `!connect calendar`) |
-| `!tools` | List available tools |
+## RAG Notes
 
----
+- Database path: `data/chroma_db`
+- Google Doc ingestion requires Google account connection and Docs API enabled
+- If chunk count is `0`, document may be empty, inaccessible, or too short
 
-## RAG Testing
+## Meeting Transcription Notes
 
+- `WHISPER_MODE=local`: uses local Whisper model in container
+- `WHISPER_MODE=api`: uses OpenAI Whisper API
+- Summaries are posted to the meeting summary channel
+
+## Troubleshooting
+
+### `403 PERMISSION_DENIED` / leaked API key
+Your Gemini key was revoked. Create a new key and update `GEMINI_API_KEY`.
+
+### Google OAuth `access_denied` in testing
+Add your account under OAuth consent screen Test Users.
+
+### Google callback `invalid_grant` / `Missing code verifier`
+Restart OAuth from dashboard and complete in one browser session.
+
+### `Google Docs API ... is disabled`
+Enable Google Docs API in the same Google Cloud project used by OAuth credentials.
+
+### Frontend "Server error"
+Check:
+- API is healthy: `curl http://localhost:8000/health`
+- `NEXT_PUBLIC_API_URL` points to `http://localhost:8000`
+- Discord OAuth vars are set in `frontend/.env.local`
+
+### Restart services
 ```bash
-# Test RAG system
-python test_rag.py status         # Check status
-python test_rag.py ingest <path>  # Ingest documents
-python test_rag.py query "..."    # Query with LLM
-python test_rag.py retrieve "..." # Raw retrieval (no LLM)
-python test_rag.py reset          # Clear database
-
-# Verbose mode
-python test_rag.py status -v
+docker compose restart api bot frontend
 ```
 
----
-
-## Configuration
-
-### Google Calendar API
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable **Google Calendar API**
-3. Create OAuth credentials (Desktop app)
-4. Save as `credentials.json` in project root
-5. Run `python src/authenticate.py` to generate `token.json`
-
-### Environment Variables (`.env`)
-```
-DISCORD_TOKEN=your_discord_bot_token
-GEMINI_API_KEY=your_gemini_api_key
-CHROMA_DB_DIR=./ragbot/chroma_db
-EMBEDDING_MODEL=BAAI/bge-base-en-v1.5
-DEFAULT_LLM_MODEL=gemini-2.5-flash-lite
+### Stop services
+```bash
+docker compose down
 ```
 
----
+## Security
 
-## Project Structure
+Never commit:
+- `.env`
+- `data/google_credentials.json`
+- `data/google_token.json`
 
-```
-Clubmate-AI/
-├── gemini/              # Discord bot & MCP client
-│   ├── discord_bot.py   # Main bot entry point
-│   ├── gemini_mcp_client.py
-│   └── example_server.py
-├── ragbot/              # RAG module
-│   ├── rag.py           # Core RAG functionality
-│   └── config.py        # RAG configuration
-├── src/
-│   └── servers/         # MCP servers
-│       └── calendar_integration.py
-├── test_rag.py          # RAG test script
-└── .env.example         # Environment template
-```
-
----
-
-*Developed by the Undergraduate Artificial Intelligence Club*
+If any secret was exposed, rotate it immediately.
