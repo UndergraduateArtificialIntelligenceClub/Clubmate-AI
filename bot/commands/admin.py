@@ -267,7 +267,16 @@ class AdminCog(commands.Cog):
         await interaction.response.defer(thinking=True)
         await _wait_for_prewarm(self.bot)
         client = await self.sessions.get(interaction.channel_id)
-        response = await _chat_with_timeout(client, f"Create a Google Doc: {details}")
+        response = await _chat_with_timeout(
+            client,
+            (
+                f"Create a Google Doc from this request: {details}. "
+                "Include meaningful initial content in the document body "
+                "(e.g., headings, bullet points, and actionable details), "
+                "unless the user explicitly asks for an empty document. "
+                "Write in plain text for Google Docs, not Markdown."
+            ),
+        )
         await interaction.followup.send(response)
 
     @app_commands.command(name="create-form", description="Create a Google Form")
@@ -287,7 +296,15 @@ class AdminCog(commands.Cog):
         await interaction.response.defer(thinking=True)
         await _wait_for_prewarm(self.bot)
         client = await self.sessions.get(interaction.channel_id)
-        response = await _chat_with_timeout(client, f"Get responses from this form: {form_url}")
+        response = await _chat_with_timeout(
+            client,
+            (
+                f"Get responses from this form: {form_url}. "
+                "Show one section per respondent with their name first; "
+                "if name is unavailable, use respondent email; "
+                "then list that respondent's answers."
+            ),
+        )
         await interaction.followup.send(response)
 
     @app_commands.command(name="read-sheet", description="Read data from a Google Sheet")
@@ -307,7 +324,12 @@ class AdminCog(commands.Cog):
         client = await self.sessions.get(interaction.channel_id)
         response = await _chat_with_timeout(
             client,
-            f"Read data from this sheet: {sheet_url}, range: {range_notation}"
+            (
+                f"Read data from this sheet: {sheet_url}, range: {range_notation}. "
+                "Return a concise summary, not a raw dump. "
+                "Include: total rows, key columns detected, completion/progress insights, due-date highlights, and anomalies. "
+                "Show at most 5 representative rows only if needed for context."
+            ),
         )
         await interaction.followup.send(response)
 

@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, ConfigResponse } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -33,8 +33,9 @@ async function updateApiKeys(token: string, keys: Partial<ApiKeysForm>) {
 
 export default function SettingsPage() {
   const { data: session } = useSession();
+  const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [model, setModel] = useState("");
-  const [whisperMode, setWhisperMode] = useState("gemini");
+  const [whisperMode, setWhisperMode] = useState("local");
   const [topK, setTopK] = useState("5");
 
   // API key fields — intentionally blank on load (never expose existing values to frontend)
@@ -49,11 +50,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string; for?: string } | null>(null);
 
-  const token = (session as { accessToken?: string } | null)?.accessToken;
+  const token = (session as any)?.accessToken;
 
   useEffect(() => {
     if (!token) return;
     api.config.get(token).then((c) => {
+      setConfig(c);
       setModel(c.default_llm_model);
       setWhisperMode(c.whisper_mode);
       setTopK(String(c.top_k_results));
@@ -61,10 +63,6 @@ export default function SettingsPage() {
   }, [token]);
 
   async function saveGeneralSettings() {
-    if (!token) {
-      setMsg({ type: "error", text: "Not authenticated.", for: "general" });
-      return;
-    }
     setLoading("general");
     setMsg(null);
     try {
@@ -74,19 +72,14 @@ export default function SettingsPage() {
         top_k_results: parseInt(topK),
       });
       setMsg({ type: "success", text: "Settings saved. Restart the bot to apply.", for: "general" });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to save settings.";
-      setMsg({ type: "error", text: message, for: "general" });
+    } catch (e: any) {
+      setMsg({ type: "error", text: e.message, for: "general" });
     } finally {
       setLoading(null);
     }
   }
 
   async function saveApiKeys() {
-    if (!token) {
-      setMsg({ type: "error", text: "Not authenticated.", for: "keys" });
-      return;
-    }
     const dirty = Object.fromEntries(
       Object.entries(keys).filter(([, v]) => v.trim() !== "")
     );
@@ -100,9 +93,8 @@ export default function SettingsPage() {
       await updateApiKeys(token, dirty);
       setKeys({ discord_token: "", discord_client_id: "", discord_client_secret: "", discord_guild_id: "", gemini_api_key: "" });
       setMsg({ type: "success", text: "API keys updated. Restart the bot for changes to take effect.", for: "keys" });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to update API keys.";
-      setMsg({ type: "error", text: message, for: "keys" });
+    } catch (e: any) {
+      setMsg({ type: "error", text: e.message, for: "keys" });
     } finally {
       setLoading(null);
     }
@@ -177,7 +169,6 @@ export default function SettingsPage() {
             onChange={(e) => setWhisperMode(e.target.value)}
             className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
           >
-            <option value="gemini" className="bg-[#16213e]">Gemini Audio (recommended, uses Gemini API key)</option>
             <option value="local" className="bg-[#16213e]">Local Whisper (free, runs on your server)</option>
             <option value="api" className="bg-[#16213e]">OpenAI Whisper API (faster, requires OpenAI key)</option>
           </select>

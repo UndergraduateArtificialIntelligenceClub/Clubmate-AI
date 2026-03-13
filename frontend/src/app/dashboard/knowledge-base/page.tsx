@@ -29,7 +29,7 @@ export default function KnowledgeBasePage() {
       const res = await api.rag.ingestGoogleDoc(token, docUrl);
       setMsg({ type: "success", text: res.message });
       setDocUrl("");
-      await refresh();
+      refresh();
     } catch (e: any) {
       setMsg({ type: "error", text: e.message });
     } finally {
@@ -45,7 +45,7 @@ export default function KnowledgeBasePage() {
     try {
       const res = await api.rag.ingestFile(token, file);
       setMsg({ type: "success", text: res.message });
-      await refresh();
+      refresh();
     } catch (e: any) {
       setMsg({ type: "error", text: e.message });
     } finally {
@@ -61,7 +61,7 @@ export default function KnowledgeBasePage() {
     try {
       const res = await api.rag.reset(token);
       setMsg({ type: "success", text: res.message });
-      await refresh();
+      refresh();
     } catch (e: any) {
       setMsg({ type: "error", text: e.message });
     } finally {

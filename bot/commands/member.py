@@ -5,6 +5,9 @@ Available to all Discord server members.
 
 import asyncio
 import logging
+from datetime import datetime
+
+from dateutil import parser, tz
 
 import discord
 from discord import app_commands
@@ -46,20 +49,49 @@ def _split(text: str, limit: int = 1900) -> list[str]:
 
 
 def _format_day_events(result: dict) -> str:
+    def _format_date(d: str) -> str:
+        try:
+            return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except Exception:
+            return d
+
+    def _format_event_time(raw_start: str, raw_end: str, timezone: str) -> str:
+        if not raw_start or not raw_end:
+            return "Unknown time"
+
+        # All-day events usually come back as YYYY-MM-DD (no time component)
+        if "T" not in raw_start and "T" not in raw_end:
+            return "All day"
+
+        try:
+            start_dt = parser.isoparse(raw_start)
+            end_dt = parser.isoparse(raw_end)
+            target_tz = tz.gettz(timezone) if timezone else None
+            if target_tz and start_dt.tzinfo:
+                start_dt = start_dt.astimezone(target_tz)
+            if target_tz and end_dt.tzinfo:
+                end_dt = end_dt.astimezone(target_tz)
+            return f"{start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}"
+        except Exception:
+            return f"{raw_start} - {raw_end}"
+
     if "error" in result:
         return f"❌ {result['error']}"
     events = result.get("events") or []
     if not events:
         return result.get("message", "No events found for that day.")
 
-    lines = [f"**Schedule for {result.get('date')}** ({result.get('timezone')})"]
+    timezone = result.get("timezone", "")
+    day_label = _format_date(result.get("date", "Unknown date"))
+    lines = [f"**Schedule for {day_label}**"]
     for event in events:
         start = event.get("start", "Unknown start")
         end = event.get("end", "Unknown end")
         title = event.get("summary", "No Title")
+        time_label = _format_event_time(start, end, timezone)
         attendees = event.get("attendees") or []
         attendee_count = f" | 👥 {len(attendees)} attendee(s)" if attendees else ""
-        lines.append(f"- `{start} → {end}` — **{title}**{attendee_count}")
+        lines.append(f"- `{time_label}` — **{title}**{attendee_count}")
     return "\n".join(lines)
 
 
@@ -80,27 +112,24 @@ class MemberCog(commands.Cog):
         for chunk in rest:
             await interaction.followup.send(chunk)
 
-    @app_commands.command(name="events", description="List upcoming events or events on a specific date")
+    @app_commands.command(name="events", description="List today's events or events on a specific date")
     @app_commands.describe(date="Optional date in YYYY-MM-DD format")
     async def events(self, interaction: discord.Interaction, date: str = ""):
         await interaction.response.defer(thinking=True)
         await _wait_for_prewarm(self.bot)
         try:
-            if date.strip():
-                from mcp_servers.google_calendar import list_events_on_date
+            from mcp_servers.google_calendar import DEFAULT_TIMEZONE, list_events_on_date
 
-                result = await asyncio.wait_for(
-                    asyncio.to_thread(list_events_on_date, date.strip()),
-                    timeout=CALENDAR_TIMEOUT,
-                )
-                response = _format_day_events(result)
-            else:
-                from mcp_servers.google_calendar import list_upcoming_events
+            query_date = date.strip()
+            if not query_date:
+                # Default to today's date in the calendar timezone.
+                query_date = datetime.now(tz.gettz(DEFAULT_TIMEZONE)).date().isoformat()
 
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(list_upcoming_events, 10),
-                    timeout=CALENDAR_TIMEOUT,
-                )
+            result = await asyncio.wait_for(
+                asyncio.to_thread(list_events_on_date, query_date),
+                timeout=CALENDAR_TIMEOUT,
+            )
+            response = _format_day_events(result)
 
             for chunk in _split(response):
                 await interaction.followup.send(chunk)
@@ -153,7 +182,7 @@ class MemberCog(commands.Cog):
                     "available_by_room": by_room,
                     "total_available_slots": len(available),
                 }
-                return format_results(results) + "\n\nBook at: https://libcal.ualberta.ca/"
+                return format_results(results)
 
             result = await asyncio.to_thread(_fetch)
             for chunk in _split(result):
@@ -177,7 +206,7 @@ class MemberCog(commands.Cog):
             name="Member Commands",
             value=(
                 "`/ask` — Ask a question\n"
-                "`/events` — Upcoming events (or pass a date)\n"
+                "`/events` — Today's events (or pass a date)\n"
                 "`/rooms` — Library room availability\n"
                 "`/clear` — Clear chat history\n"
                 "`/help` — This message"

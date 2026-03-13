@@ -55,19 +55,12 @@ class Settings(BaseSettings):
     api_port: int = 8000
     # Secret key for signing JWT sessions in the API
     api_secret_key: str = "change-me-in-production"
-    # Public API base URL used for OAuth callbacks behind proxies/load balancers.
-    # Example: https://api.clubmate.yourclub.ca
-    api_external_base_url: str = ""
-    # Comma-separated allowed frontend origins for CORS.
-    # Example: https://clubmate.yourclub.ca,https://staging.clubmate.yourclub.ca
-    frontend_origins: str = "http://frontend:3000,http://localhost:3000,http://127.0.0.1:3000"
 
     # ── Meeting Transcription ─────────────────────────────────────────────────
     # Channel ID where meeting summaries are posted after a session ends
     meeting_summary_channel_id: str = ""
-    # "gemini" uses Gemini audio transcription (uses GEMINI_API_KEY)
     # "local" uses local Whisper model, "api" uses OpenAI Whisper API
-    whisper_mode: str = "gemini"
+    whisper_mode: str = "local"
     openai_api_key: str = ""  # only needed if whisper_mode = "api"
 
 
