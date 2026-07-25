@@ -30,7 +30,7 @@ class TestSettingsDefaults:
 
     def test_default_whisper_mode(self):
         s = Settings(discord_token="", _env_file=None)
-        assert s.whisper_mode == "gemini"
+        assert s.whisper_mode == "local"
 
     def test_default_chunk_threshold(self):
         s = Settings(discord_token="", _env_file=None)

@@ -54,7 +54,7 @@ class TestIngestGoogleDoc:
 
 class TestResetRag:
     def test_reset_success(self, client):
-        with patch("ragbot.rag.db_reset", return_value=True):
+        with patch("ragbot.db_reset", return_value=True):
             resp = client.delete("/rag/reset", headers={"Authorization": "Bearer test-token"})
         assert resp.status_code == 200
         data = resp.json()

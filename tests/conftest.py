@@ -151,12 +151,15 @@ def rag_with_temp_db(tmp_chroma_dir):
     # Point config to temp dir
     original_db_dir = RAGConfig.CHROMA_DB_DIR
     original_collection = RAGConfig.CHROMA_COLLECTION_NAME
+    original_gemini_key = RAGConfig.GEMINI_API_KEY
     original_settings_db = settings.chroma_db_dir
     original_settings_col = settings.chroma_collection_name
     RAGConfig.CHROMA_DB_DIR = tmp_chroma_dir
     RAGConfig.CHROMA_COLLECTION_NAME = "test-integration"
+    RAGConfig.GEMINI_API_KEY = "test-fake-key"
     settings.chroma_db_dir = tmp_chroma_dir
     settings.chroma_collection_name = "test-integration"
+    settings.gemini_api_key = "test-fake-key"
 
     # Patch embeddings creation to use our fake
     with patch("ragbot.rag.create_embeddings", return_value=FakeEmbeddings()):
@@ -173,6 +176,7 @@ def rag_with_temp_db(tmp_chroma_dir):
     rag_mod._rag = None
     RAGConfig.CHROMA_DB_DIR = original_db_dir
     RAGConfig.CHROMA_COLLECTION_NAME = original_collection
+    RAGConfig.GEMINI_API_KEY = original_gemini_key
     settings.chroma_db_dir = original_settings_db
     settings.chroma_collection_name = original_settings_col
 

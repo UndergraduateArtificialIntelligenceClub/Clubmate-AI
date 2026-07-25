@@ -307,7 +307,7 @@ class TestRAGEndpoints:
         assert "chunk_count" in data
 
     def test_rag_reset(self, authed_client):
-        with patch("ragbot.rag.db_reset", return_value=True):
+        with patch("ragbot.db_reset", return_value=True):
             resp = authed_client.delete(
                 "/rag/reset",
                 headers={"Authorization": "Bearer valid-token"},

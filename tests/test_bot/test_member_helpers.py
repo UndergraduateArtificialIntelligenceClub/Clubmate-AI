@@ -72,7 +72,7 @@ class TestFormatDayEvents:
         output = _format_day_events(result)
         assert "Team Standup" in output
         assert "👥 1" in output
-        assert "2025-03-15" in output
+        assert "15/03/2025" in output
 
     def test_event_without_attendees(self):
         result = {

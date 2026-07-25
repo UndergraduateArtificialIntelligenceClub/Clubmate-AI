@@ -36,7 +36,8 @@ class TestCreateForm:
         result = create_form("Test Form", "Description")
         assert result["form_id"] == "form123"
         assert result["title"] == "Test Form"
-        service.forms().batchUpdate.assert_not_called()
+        # Merged main auto-adds a Name question for respondent identity
+        service.forms().batchUpdate.assert_called_once()
 
     @patch("mcp_servers.google_forms.get_service")
     def test_creates_form_with_questions(self, mock_get_service):

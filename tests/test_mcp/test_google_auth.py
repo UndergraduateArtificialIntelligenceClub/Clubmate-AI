@@ -98,5 +98,5 @@ class TestGetService:
         mock_get_creds.return_value = creds
 
         result = get_service("calendar", "v3")
-        mock_build.assert_called_once_with("calendar", "v3", credentials=creds, cache_discovery=False)
+        mock_build.assert_called_once_with("calendar", "v3", credentials=creds)
         assert result is mock_build.return_value
