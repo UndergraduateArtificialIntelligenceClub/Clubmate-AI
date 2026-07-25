@@ -91,3 +91,28 @@ def mock_genai_client():
     client.aio.models = MagicMock()
     client.aio.models.generate_content = AsyncMock()
     return client
+
+
+@pytest.fixture
+def client(mock_settings):
+    """Create a FastAPI TestClient with mocked auth and settings."""
+    from fastapi.testclient import TestClient
+    from api.main import app
+
+    def _mock_verify():
+        return {"id": "12345", "username": "TestUser", "discriminator": "0"}
+
+    with patch("api.routers.config.settings", mock_settings), \
+         patch("api.routers.status.settings", mock_settings), \
+         patch("api.routers.google_auth.settings", mock_settings):
+        from api.auth import verify_discord_admin
+
+        def _override():
+            return {"id": "12345", "username": "TestUser", "discriminator": "0"}
+
+        app.dependency_overrides[verify_discord_admin] = _override
+
+        with TestClient(app, raise_server_exceptions=False) as c:
+            yield c
+
+        app.dependency_overrides.clear()
