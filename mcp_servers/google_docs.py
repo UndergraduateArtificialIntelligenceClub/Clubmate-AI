@@ -4,6 +4,7 @@ Provides tools to read, create, and append content to Google Docs.
 """
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,46 @@ def _extract_doc_id(doc_url_or_id: str) -> str:
         if len(parts) > 1:
             return parts[1].split("/")[0]
     return doc_url_or_id
+
+
+def _markdown_to_plain_text(text: str) -> str:
+    """
+    Convert common Markdown syntax to plain text before writing into Google Docs.
+    Keeps content readable while removing raw markdown markers like #, **, and backticks.
+    """
+    if not text:
+        return text
+
+    lines = text.replace("\r\n", "\n").split("\n")
+    cleaned = []
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+
+        # Remove heading markers (e.g., ## Title)
+        line = re.sub(r"^\s{0,3}#{1,6}\s*", "", line)
+
+        # Normalize list markers to plain dash bullets
+        line = re.sub(r"^\s*[-*+]\s+", "- ", line)
+        line = re.sub(r"^\s*\d+\.\s+", "- ", line)
+
+        # Inline markdown cleanup
+        line = re.sub(r"\*\*(.+?)\*\*", r"\1", line)  # bold
+        line = re.sub(r"__(.+?)__", r"\1", line)      # bold alt
+        line = re.sub(r"\*(.+?)\*", r"\1", line)      # italic
+        line = re.sub(r"_(.+?)_", r"\1", line)        # italic alt
+        line = re.sub(r"`([^`]+)`", r"\1", line)      # inline code
+        line = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1 (\2)", line)  # links
+
+        # Remove markdown horizontal rules
+        if re.fullmatch(r"\s*([-*_])\1{2,}\s*", line):
+            continue
+
+        cleaned.append(line)
+
+    plain = "\n".join(cleaned).strip()
+    plain = re.sub(r"\n{3,}", "\n\n", plain)
+    return plain
 
 
 def _read_structural_elements(elements) -> str:
@@ -81,8 +122,9 @@ def create_document(title: str, content: Optional[str] = None) -> dict:
     service = get_service("docs", "v1")
     doc = service.documents().create(body={"title": title}).execute()
     doc_id = doc.get("documentId")
+    normalized_content = _markdown_to_plain_text(content) if content else None
 
-    if content:
+    if normalized_content:
         service.documents().batchUpdate(
             documentId=doc_id,
             body={
@@ -90,7 +132,7 @@ def create_document(title: str, content: Optional[str] = None) -> dict:
                     {
                         "insertText": {
                             "location": {"index": 1},
-                            "text": content,
+                            "text": normalized_content,
                         }
                     }
                 ]
@@ -123,6 +165,7 @@ def append_to_document(doc_url_or_id: str, text: str) -> dict:
     doc = service.documents().get(documentId=doc_id).execute()
     content = doc.get("body", {}).get("content", [])
     end_index = content[-1].get("endIndex", 1) - 1 if content else 1
+    normalized_text = _markdown_to_plain_text(text)
 
     service.documents().batchUpdate(
         documentId=doc_id,
@@ -131,7 +174,7 @@ def append_to_document(doc_url_or_id: str, text: str) -> dict:
                 {
                     "insertText": {
                         "location": {"index": end_index},
-                        "text": f"\n{text}",
+                        "text": f"\n{normalized_text}",
                     }
                 }
             ]

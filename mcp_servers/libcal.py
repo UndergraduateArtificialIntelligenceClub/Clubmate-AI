@@ -12,10 +12,12 @@ LIBRARIES = {
     "cameron": {
         "name": "Cameron Library",
         "id": "441",
+        "url": "https://ualberta.libcal.com/spaces?lid=441",
     },
     "sperber": {
         "name": "Sperber Library",
         "id": "2950",
+        "url": "https://ualberta.libcal.com/spaces?lid=2950",
     },
 }
 
@@ -231,6 +233,12 @@ def format_results(results: Dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"_{results.get('total_available_slots', 0)} total slots_")
 
+    location_key = (results.get("location") or "").lower().strip()
+    booking_url = LIBRARIES.get(location_key, {}).get("url")
+    if booking_url:
+        lines.append("")
+        lines.append(f"Book at: {booking_url}")
+
     return "\n".join(lines)
 
 
@@ -248,8 +256,9 @@ def get_available_slots(
 
     NOTE to model:
         Remind the user that the booking website books per 30 minute time slots. Send them to the website as well if they want to book
-        a time slot as we can't book for them due to restrictions on the website. 
-        https://libcal.ualberta.ca/
+        a time slot as we can't book for them due to restrictions on the website.
+        Cameron: https://ualberta.libcal.com/spaces?lid=441
+        Sperber: https://ualberta.libcal.com/spaces?lid=2950
 
     Args:
         location: Library identifier. One of: cameron, sperber
@@ -333,7 +342,7 @@ def list_libraries() -> Dict[str, Any]:
         dict with list of libraries and their identifiers
     """
     libraries_list = [
-        {"id": key, "name": info["name"]}
+        {"id": key, "name": info["name"], "booking_url": info["url"]}
         for key, info in LIBRARIES.items()
     ]
 

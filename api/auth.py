@@ -43,10 +43,7 @@ async def verify_discord_admin(
             headers={"Authorization": f"Bearer {token}"},
         )
         if user_res.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Dashboard session expired or invalid. Sign in again with Discord.",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Discord token")
 
         user = user_res.json()
 

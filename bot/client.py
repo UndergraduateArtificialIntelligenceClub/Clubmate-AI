@@ -46,13 +46,22 @@ SYSTEM_PROMPT = """You are Clubmate, an AI assistant for a university club Disco
 2. **Google Calendar** — Schedule, cancel, reschedule meetings, manage invites, check availability.
 3. **Google Docs** — Read, create, and append to documents.
 4. **Google Sheets** — Read and write spreadsheet data.
-5. **Google Forms** — Create forms and retrieve responses.
+5. **Google Forms** — Create forms, edit existing forms (add questions / update title-description), and retrieve responses.
 6. **LibCal** — Check UAlberta library study room availability.
 
 ## Guidelines
 - Be concise, friendly, and professional.
 - For knowledge-base questions → use the provided context.
 - For action requests (calendar, forms, etc.) → use the appropriate MCP tool.
+- If a user references an existing Google Form URL/ID and asks to add or edit questions,
+  update that existing form rather than creating a new one.
+- For Google Form responses, present one respondent at a time with identity first:
+  Name if available, otherwise respondent email.
+- For large sheet/table outputs, summarize first and avoid dumping full raw rows unless explicitly requested.
+- When creating a Google Doc, include substantial initial body content by default
+  (not title-only), unless the user explicitly asks for an empty doc.
+- For Google Docs content, write plain text suitable for direct doc insertion.
+  Do not use Markdown markers like #, *, **, or ``` in the document body.
 - Never invent tool names. Only call tools explicitly available to you.
 - When you complete an action, confirm it clearly and share any relevant links.
 """
@@ -147,12 +156,14 @@ class GeminiMCPClient:
             function_calls = self._extract_function_calls(response)
 
             if not function_calls:
-                return getattr(response, "text", None) or "Done."
+                return self._extract_text(response) or "Done."
 
             logger.info("Tool calls requested: %s", [c.name for c in function_calls])
 
             # Append model's tool-request turn
-            self.history.append(response.candidates[0].content)
+            model_content = self._extract_candidate_content(response)
+            if model_content is not None:
+                self.history.append(model_content)
 
             # Execute each tool call across all connected sessions
             result_parts = []
@@ -179,19 +190,42 @@ class GeminiMCPClient:
         if hasattr(response, "function_calls") and response.function_calls:
             return response.function_calls
         if hasattr(response, "candidates") and response.candidates:
-            parts = response.candidates[0].content.parts
+            candidate = response.candidates[0]
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) or []
             return [p.function_call for p in parts if getattr(p, "function_call", None)]
         return []
+
+    @staticmethod
+    def _extract_candidate_content(response: Any) -> Optional[Any]:
+        if hasattr(response, "candidates") and response.candidates:
+            return getattr(response.candidates[0], "content", None)
+        return None
+
+    @staticmethod
+    def _extract_text(response: Any) -> str:
+        text = getattr(response, "text", None)
+        if text:
+            return text
+        if hasattr(response, "candidates") and response.candidates:
+            candidate = response.candidates[0]
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) or []
+            lines = [getattr(p, "text", "") for p in parts if getattr(p, "text", None)]
+            return "\n".join(line for line in lines if line).strip()
+        return ""
 
     async def _execute_tool(self, call, sessions: List[ClientSession]) -> types.Part:
         """Try each session until one successfully handles the tool call."""
         last_error = None
         for session in sessions:
             try:
-                result = await session.call_tool(call.name, arguments=call.args)
+                args = getattr(call, "args", None) or {}
+                result = await session.call_tool(call.name, arguments=args)
                 content_str = ""
-                if hasattr(result, "content"):
-                    for item in result.content:
+                content = getattr(result, "content", None)
+                if content:
+                    for item in content:
                         if hasattr(item, "text"):
                             content_str += item.text
                 else:

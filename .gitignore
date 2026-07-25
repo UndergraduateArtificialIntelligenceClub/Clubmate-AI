@@ -14,3 +14,4 @@ pyproject.toml
 # Local runtime auth/token artifacts
 data/google_token.json
 data/google_credentials.json
+.coverage

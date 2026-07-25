@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 # audioop-lts backfills audioop removed in Python 3.13; needed by discord.py voice
-RUN pip install --no-cache-dir audioop-lts "discord.py[voice]>=2.3.0" PyNaCl
+RUN pip install --no-cache-dir audioop-lts "discord.py[voice]==2.7.1" PyNaCl
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
