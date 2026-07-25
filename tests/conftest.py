@@ -1,6 +1,8 @@
 """Shared test fixtures for Clubmate AI tests."""
 
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -91,6 +93,88 @@ def mock_genai_client():
     client.aio.models = MagicMock()
     client.aio.models.generate_content = AsyncMock()
     return client
+
+
+# ── Integration test fixtures ──────────────────────────────────────────────────
+
+
+class FakeEmbeddings:
+    """Deterministic fake embeddings for integration tests. Returns fixed-dimension
+    random-but-seeded vectors so ChromaDB indexing/search works without downloading
+    a real HuggingFace model."""
+
+    def __init__(self, dimension: int = 384):
+        self.dimension = dimension
+
+    def embed_documents(self, texts):
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text):
+        return self._embed(text)
+
+    def _embed(self, text: str):
+        import hashlib
+        h = hashlib.sha256(text.encode()).digest()
+        # Expand/truncate to desired dimension
+        raw = list(h)
+        while len(raw) < self.dimension:
+            raw.extend(raw)
+        vec = [float(b) / 255.0 for b in raw[:self.dimension]]
+        # Normalize
+        norm = sum(v * v for v in vec) ** 0.5
+        if norm > 0:
+            vec = [v / norm for v in vec]
+        return vec
+
+
+@pytest.fixture
+def tmp_chroma_dir():
+    """Yield a temporary directory for ChromaDB, cleaned up after test."""
+    d = tempfile.mkdtemp(prefix="clubmate_test_chroma_")
+    yield d
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@pytest.fixture
+def rag_with_temp_db(tmp_chroma_dir):
+    """Create a real RAGSystem backed by a temp ChromaDB dir with fake embeddings.
+    Resets the singleton between tests."""
+    from ragbot.rag import RAGSystem, RAGConfig, _rag
+    import ragbot.rag as rag_mod
+    from config import settings
+
+    # Reset singleton
+    RAGSystem._instance = None
+    RAGSystem._initialized = False
+    rag_mod._rag = None
+
+    # Point config to temp dir
+    original_db_dir = RAGConfig.CHROMA_DB_DIR
+    original_collection = RAGConfig.CHROMA_COLLECTION_NAME
+    original_settings_db = settings.chroma_db_dir
+    original_settings_col = settings.chroma_collection_name
+    RAGConfig.CHROMA_DB_DIR = tmp_chroma_dir
+    RAGConfig.CHROMA_COLLECTION_NAME = "test-integration"
+    settings.chroma_db_dir = tmp_chroma_dir
+    settings.chroma_collection_name = "test-integration"
+
+    # Patch embeddings creation to use our fake
+    with patch("ragbot.rag.create_embeddings", return_value=FakeEmbeddings()):
+        # Force re-init
+        RAGSystem._instance = None
+        RAGSystem._initialized = False
+        rag_mod._rag = None
+
+        yield RAGConfig
+
+    # Teardown
+    RAGSystem._instance = None
+    RAGSystem._initialized = False
+    rag_mod._rag = None
+    RAGConfig.CHROMA_DB_DIR = original_db_dir
+    RAGConfig.CHROMA_COLLECTION_NAME = original_collection
+    settings.chroma_db_dir = original_settings_db
+    settings.chroma_collection_name = original_settings_col
 
 
 @pytest.fixture
